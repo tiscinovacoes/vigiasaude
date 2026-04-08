@@ -1,5 +1,6 @@
 'use client';
 
+import { useState } from 'react';
 import { 
   BarChart3, 
   Package, 
@@ -10,22 +11,17 @@ import {
   LogOut,
   Settings,
   Bell,
-  Search
+  Search,
+  ChevronLeft,
+  ChevronRight,
+  Menu,
+  ShoppingCart,
+  PackageCheck,
+  Building2,
+  Timer
 } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { 
-  Sidebar, 
-  SidebarContent, 
-  SidebarGroup, 
-  SidebarGroupLabel, 
-  SidebarInset, 
-  SidebarMenu, 
-  SidebarMenuButton, 
-  SidebarMenuItem, 
-  SidebarProvider,
-  SidebarTrigger 
-} from '@/components/ui/sidebar';
 import { Separator } from '@/components/ui/separator';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
@@ -36,6 +32,10 @@ const MENU_ITEMS = [
   { icon: Package, label: 'Estoque FEFO', href: '/dashboard/estoque' },
   { icon: Users, label: 'Pacientes/CRM', href: '/dashboard/pacientes' },
   { icon: Truck, label: 'Monitoramento', href: '/dashboard/monitoramento' },
+  { icon: ShoppingCart, label: 'Compras', href: '/dashboard/compras' },
+  { icon: PackageCheck, label: 'Entregas', href: '/dashboard/entregas' },
+  { icon: Building2, label: 'Fornecedores', href: '/dashboard/fornecedores' },
+  { icon: Timer, label: 'Lead Time', href: '/dashboard/lead-time' },
   { icon: ShieldAlert, label: 'Motor de Recall', href: '/dashboard/recall' },
   { icon: FileText, label: 'Relatórios', href: '/dashboard/relatorios' },
 ];
@@ -43,79 +43,113 @@ const MENU_ITEMS = [
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
+  const [collapsed, setCollapsed] = useState(false);
 
   return (
-    <SidebarProvider>
-      <Sidebar variant="inset" className="bg-[#1E3A8A] border-none text-white">
-        <div className="p-6">
-          <div className="flex items-center gap-3 mb-8">
-            <div className="w-10 h-10 bg-white rounded-xl flex items-center justify-center">
-              <ShieldAlert className="text-[#1E3A8A]" size={24} />
-            </div>
-            <div>
-              <h2 className="font-black text-xl leading-none text-white">Vigia Saúde</h2>
-              <p className="text-[10px] font-bold text-blue-200 uppercase tracking-widest mt-1">Municipio Teste / MS</p>
-            </div>
+    <div className="flex h-screen bg-slate-50 overflow-hidden">
+      
+      {/* SIDEBAR */}
+      <aside
+        className={cn(
+          'relative flex flex-col bg-[#1E3A8A] text-white transition-all duration-300 ease-in-out shrink-0',
+          collapsed ? 'w-[72px]' : 'w-[240px]'
+        )}
+      >
+        {/* Logo */}
+        <div className={cn('flex items-center gap-3 p-5 overflow-hidden', collapsed && 'justify-center px-0')}>
+          <div className="w-10 h-10 bg-white rounded-xl flex items-center justify-center shrink-0">
+            <ShieldAlert className="text-[#1E3A8A]" size={22} />
           </div>
+          {!collapsed && (
+            <div className="min-w-0">
+              <h2 className="font-black text-lg leading-none text-white truncate">Vigia Saúde</h2>
+              <p className="text-[10px] font-bold text-blue-200 uppercase tracking-widest mt-1 truncate">Municipio Teste / MS</p>
+            </div>
+          )}
         </div>
 
-        <SidebarContent>
-          <SidebarGroup>
-            <SidebarGroupLabel className="text-blue-200/50 mb-2 px-6 uppercase text-[10px] font-black tracking-tighter">
-              Menu Principal
-            </SidebarGroupLabel>
-            <SidebarMenu className="px-3">
-              {MENU_ITEMS.map((item) => (
-                <SidebarMenuItem key={item.href}>
-                  <SidebarMenuButton 
-                    asChild 
-                    isActive={pathname === item.href}
-                    className={cn(
-                      "flex items-center gap-4 px-4 py-6 rounded-xl transition-all duration-200",
-                      pathname === item.href 
-                        ? "bg-white/20 text-white shadow-lg" 
-                        : "text-blue-100 hover:bg-white/10 hover:text-white"
-                    )}
-                  >
-                    <Link href={item.href} className="w-full h-full flex items-center">
-                      <item.icon size={20} className="shrink-0" />
-                      <span className="font-bold text-sm ml-2">{item.label}</span>
-                    </Link>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-              ))}
-            </SidebarMenu>
-          </SidebarGroup>
-        </SidebarContent>
+        <Separator className="bg-white/10" />
 
-        <div className="mt-auto p-4 flex flex-col gap-2">
+        {/* Menu items */}
+        <nav className="flex-1 py-4 px-2 space-y-1 overflow-y-auto">
+          {!collapsed && (
+            <p className="text-[10px] font-black text-blue-200/50 uppercase tracking-widest px-3 mb-3">Menu Principal</p>
+          )}
+          {MENU_ITEMS.map((item) => {
+            const isActive = pathname === item.href;
+            return (
+              <Link
+                key={item.href}
+                href={item.href}
+                className={cn(
+                  'flex items-center gap-3 rounded-xl transition-all duration-200 font-bold text-sm group',
+                  collapsed ? 'justify-center p-3' : 'px-4 py-3',
+                  isActive
+                    ? 'bg-white/20 text-white shadow-lg'
+                    : 'text-blue-100 hover:bg-white/10 hover:text-white'
+                )}
+                title={collapsed ? item.label : undefined}
+              >
+                <item.icon size={20} className="shrink-0" />
+                {!collapsed && <span>{item.label}</span>}
+              </Link>
+            );
+          })}
+        </nav>
+
+        {/* Bottom actions */}
+        <div className="p-2 space-y-1">
           <Separator className="bg-white/10 mb-2" />
-          <Button variant="ghost" className="justify-start gap-4 text-blue-100 hover:bg-white/10 hover:text-white group">
-            <Settings size={20} />
-            <span className="font-bold text-sm">Configuração</span>
-          </Button>
-          <Button 
-            onClick={() => {
-              toast.info("Encerrando sessão auditada...");
-              router.push('/');
-            }} 
-            variant="ghost" 
-            className="justify-start gap-4 text-red-300 hover:bg-red-500/20 hover:text-red-100"
+          <button
+            className={cn(
+              'w-full flex items-center gap-3 rounded-xl px-4 py-3 font-bold text-sm text-blue-100 hover:bg-white/10 hover:text-white transition-all',
+              collapsed && 'justify-center px-3'
+            )}
+            title={collapsed ? 'Configuração' : undefined}
           >
-            <LogOut size={20} />
-            <span className="font-bold text-sm">Sair do Sistema</span>
-          </Button>
+            <Settings size={20} className="shrink-0" />
+            {!collapsed && <span>Configuração</span>}
+          </button>
+          <button
+            onClick={() => {
+              toast.info('Encerrando sessão auditada...');
+              router.push('/');
+            }}
+            className={cn(
+              'w-full flex items-center gap-3 rounded-xl px-4 py-3 font-bold text-sm text-red-300 hover:bg-red-500/20 hover:text-red-100 transition-all',
+              collapsed && 'justify-center px-3'
+            )}
+            title={collapsed ? 'Sair do Sistema' : undefined}
+          >
+            <LogOut size={20} className="shrink-0" />
+            {!collapsed && <span>Sair do Sistema</span>}
+          </button>
         </div>
-      </Sidebar>
 
-      <SidebarInset className="bg-slate-50">
+        {/* Toggle button */}
+        <button
+          onClick={() => setCollapsed(!collapsed)}
+          className="absolute -right-3 top-1/2 -translate-y-1/2 w-6 h-6 bg-white border border-slate-200 rounded-full flex items-center justify-center shadow-md text-[#1E3A8A] hover:bg-slate-50 transition-colors z-10"
+        >
+          {collapsed ? <ChevronRight size={14} /> : <ChevronLeft size={14} />}
+        </button>
+      </aside>
+
+      {/* MAIN CONTENT */}
+      <div className="flex flex-col flex-1 min-w-0 overflow-hidden">
+        {/* Top Header */}
         <header className="flex h-16 shrink-0 items-center justify-between gap-2 border-b bg-white px-6">
-          <div className="flex items-center gap-2">
-            <SidebarTrigger className="-ml-1" />
-            <Separator orientation="vertical" className="mr-2 h-4" />
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => setCollapsed(!collapsed)}
+              className="p-1.5 rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition-colors"
+            >
+              <Menu size={20} />
+            </button>
+            <Separator orientation="vertical" className="h-4" />
             <div className="flex items-center gap-2 text-slate-400">
-               <Search size={16}/>
-               <span className="text-xs font-medium">Buscador Global (S/N, CPF, Lote)</span>
+              <Search size={16} />
+              <span className="text-xs font-medium">Buscador Global (S/N, CPF, Lote)</span>
             </div>
           </div>
           <div className="flex items-center gap-4">
@@ -132,10 +166,12 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             </div>
           </div>
         </header>
-        <div className="flex flex-1 flex-col overflow-hidden">
+
+        {/* Page content */}
+        <div className="flex flex-1 flex-col overflow-auto">
           {children}
         </div>
-      </SidebarInset>
-    </SidebarProvider>
+      </div>
+    </div>
   );
 }
