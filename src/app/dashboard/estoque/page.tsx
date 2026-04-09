@@ -10,7 +10,9 @@ import {
   Activity,
   History,
   Layers,
-  Info
+  Info,
+  Loader2,
+  Package
 } from 'lucide-react';
 import { 
   Table, 
@@ -36,34 +38,46 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { TabelaEstoqueFEFO } from '@/components/TabelaEstoqueFEFO';
+import { api, type Medicamento } from '@/lib/api';
 
-// === Mock Data (Refined for FEFO rules) ===
-const MOCK_DETALHE = {
-  id: 'med_001',
-  nome: 'Insulina NPH 100UI/ml',
-  categoria: 'Injetável',
-  estoque_total: 125,
-  lotes: [
-    { id: 'LT-2023-A1', validade: '2024-04-15', qtd: 45, status: 'Vencimento Próximo', prioridade: '1º a usar' },
-    { id: 'LT-2023-A2', validade: '2024-12-30', qtd: 80, status: 'Normal', prioridade: '2º a usar' }
-  ],
-  movimentacoes: [
-    { data: '2024-03-15', acao: 'Saída/Entrega', qtd: -5, lote: 'LT-2023-A1', paciente: 'Ana Beatriz' },
-    { data: '2024-03-10', acao: 'Entrada/Compra', qtd: 100, lote: 'LT-2023-A2', paciente: '-' }
-  ]
-};
-
-function MedicamentoContent() {
+function EstoqueContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const pathname = usePathname();
-  const activeTab = searchParams.get('tab') || 'lotes';
+  const activeTab = searchParams.get('tab') || 'visao-geral';
+
+  const [loading, setLoading] = useState(true);
+  const [medicamentos, setMedicamentos] = useState<Medicamento[]>([]);
+
+  useEffect(() => {
+    loadEstoque();
+  }, []);
+
+  const loadEstoque = async () => {
+    setLoading(true);
+    try {
+      const data = await api.getEstoqueBase();
+      setMedicamentos(data);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const handleTabChange = (value: string) => {
     const params = new URLSearchParams(searchParams);
     params.set('tab', value);
     router.replace(`${pathname}?${params.toString()}`);
   };
+
+  // Compute stats
+  const totalMeds = medicamentos.length;
+  const totalLotes = medicamentos.reduce((s, m) => s + (m.lotes?.length || 0), 0);
+  const estoqueCritico = medicamentos.filter(m => {
+    const totalDisp = (m.lotes || []).reduce((s, l) => s + (l.quantidade_disponivel || 0), 0);
+    return totalDisp < m.estoque_minimo;
+  }).length;
 
   return (
     <div className="p-8 space-y-6">
@@ -73,87 +87,128 @@ function MedicamentoContent() {
         </Button>
         <div>
           <h1 className="text-2xl font-bold flex items-center gap-2">
-            {MOCK_DETALHE.nome}
+            Gestão de Estoque FEFO
             <TooltipProvider>
               <Tooltip>
                 <TooltipTrigger>
                   <Info size={16} className="text-slate-400" />
                 </TooltipTrigger>
                 <TooltipContent>
-                  <p>Código CMED: 10982-1</p>
+                  <p>First Expired, First Out — Lotes com vencimento mais próximo devem ser dispensados primeiro.</p>
                 </TooltipContent>
               </Tooltip>
             </TooltipProvider>
           </h1>
-          <p className="text-muted-foreground">{MOCK_DETALHE.categoria}</p>
+          <p className="text-muted-foreground">Medicamentos e Lotes conectados ao Supabase</p>
         </div>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
          <div className="bg-white p-6 rounded-xl border shadow-sm flex items-center gap-4">
-           <div className="w-12 h-12 bg-blue-50 text-blue-600 rounded-lg flex items-center justify-center"><Layers size={24}/></div>
-           <div><p className="text-xs font-bold text-muted-foreground uppercase">Estoque Total</p><h3 className="text-2xl font-black">{MOCK_DETALHE.estoque_total} un</h3></div>
+           <div className="w-12 h-12 bg-blue-50 text-blue-600 rounded-lg flex items-center justify-center"><Package size={24}/></div>
+           <div><p className="text-xs font-bold text-muted-foreground uppercase">Medicamentos</p><h3 className="text-2xl font-black">{totalMeds}</h3></div>
          </div>
          <div className="bg-white p-6 rounded-xl border shadow-sm flex items-center gap-4">
-           <div className="w-12 h-12 bg-emerald-50 text-emerald-600 rounded-lg flex items-center justify-center"><TrendingUp size={24}/></div>
-           <div><p className="text-xs font-bold text-muted-foreground uppercase">Consumo Médio</p><h3 className="text-2xl font-black">4.2/dia</h3></div>
+           <div className="w-12 h-12 bg-emerald-50 text-emerald-600 rounded-lg flex items-center justify-center"><Layers size={24}/></div>
+           <div><p className="text-xs font-bold text-muted-foreground uppercase">Total de Lotes</p><h3 className="text-2xl font-black">{totalLotes}</h3></div>
          </div>
-         <div className="bg-red-50 p-6 rounded-xl border border-red-100 flex items-center gap-4">
-           <div className="w-12 h-12 bg-red-100 text-red-600 rounded-lg flex items-center justify-center animate-pulse-red"><AlertTriangle size={24}/></div>
-           <div><p className="text-xs font-bold text-red-600 uppercase">Risco de Ruptura</p><h3 className="text-2xl font-black text-red-700">7 dias</h3></div>
+         <div className={cn(
+           "p-6 rounded-xl border flex items-center gap-4",
+           estoqueCritico > 0 ? "bg-red-50 border-red-100" : "bg-emerald-50 border-emerald-100"
+         )}>
+           <div className={cn(
+             "w-12 h-12 rounded-lg flex items-center justify-center",
+             estoqueCritico > 0 ? "bg-red-100 text-red-600" : "bg-emerald-100 text-emerald-600"
+           )}>
+             <AlertTriangle size={24}/>
+           </div>
+           <div>
+             <p className={cn("text-xs font-bold uppercase", estoqueCritico > 0 ? "text-red-600" : "text-emerald-600")}>
+               {estoqueCritico > 0 ? 'Estoque Crítico' : 'Estoque OK'}
+             </p>
+             <h3 className={cn("text-2xl font-black", estoqueCritico > 0 ? "text-red-700" : "text-emerald-700")}>
+               {estoqueCritico > 0 ? `${estoqueCritico} itens` : 'Tudo em ordem'}
+             </h3>
+           </div>
          </div>
       </div>
 
       <Tabs value={activeTab} onValueChange={handleTabChange} className="w-full">
         <TabsList className="bg-slate-100 p-1">
+          <TabsTrigger value="visao-geral" className="flex items-center gap-2"><Package size={16}/> Visão Geral</TabsTrigger>
           <TabsTrigger value="lotes" className="flex items-center gap-2"><Layers size={16}/> Lotes Ativos (FEFO)</TabsTrigger>
-          <TabsTrigger value="historico" className="flex items-center gap-2"><History size={16}/> Histórico de Movimentação</TabsTrigger>
         </TabsList>
+
+        <TabsContent value="visao-geral" className="mt-6">
+          {loading ? (
+            <div className="p-16 text-center">
+              <Loader2 size={32} className="mx-auto animate-spin text-blue-500 mb-3" />
+              <p className="text-sm text-slate-500 font-medium">Carregando medicamentos...</p>
+            </div>
+          ) : medicamentos.length === 0 ? (
+            <div className="p-16 text-center bg-white rounded-xl border">
+              <Package size={40} className="mx-auto text-slate-300 mb-3" />
+              <p className="font-bold text-slate-600">Nenhum medicamento cadastrado</p>
+            </div>
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Medicamento</TableHead>
+                  <TableHead>Dosagem</TableHead>
+                  <TableHead className="text-right">Estoque Mín.</TableHead>
+                  <TableHead className="text-right">Estoque Atual</TableHead>
+                  <TableHead className="text-right">Preço CMED</TableHead>
+                  <TableHead className="text-center">Lotes</TableHead>
+                  <TableHead className="text-center">Status</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {medicamentos.map((med) => {
+                  const totalDisp = (med.lotes || []).reduce((s, l) => s + (l.quantidade_disponivel || 0), 0);
+                  const isCritico = totalDisp < med.estoque_minimo;
+                  
+                  return (
+                    <TableRow key={med.id} className={cn(isCritico && "bg-red-50/50")}>
+                      <TableCell className="font-bold text-slate-800">{med.nome}</TableCell>
+                      <TableCell className="text-slate-500">{med.dosagem || '-'}</TableCell>
+                      <TableCell className="text-right font-mono text-xs">{med.estoque_minimo}</TableCell>
+                      <TableCell className={cn("text-right font-black", isCritico ? "text-red-600" : "text-slate-800")}>
+                        {totalDisp}
+                      </TableCell>
+                      <TableCell className="text-right font-mono text-xs">
+                        R$ {med.preco_teto_cmed?.toFixed(2).replace('.', ',')}
+                      </TableCell>
+                      <TableCell className="text-center">
+                        <Badge variant="secondary" className="font-bold text-[10px]">{(med.lotes || []).length}</Badge>
+                      </TableCell>
+                      <TableCell className="text-center">
+                        {isCritico ? (
+                          <Badge variant="destructive" className="text-[10px] font-bold">CRÍTICO</Badge>
+                        ) : (
+                          <Badge className="bg-emerald-50 text-emerald-600 border-none text-[10px] font-bold">NORMAL</Badge>
+                        )}
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
+              </TableBody>
+            </Table>
+          )}
+        </TabsContent>
 
         <TabsContent value="lotes" className="mt-6">
           <TabelaEstoqueFEFO />
-        </TabsContent>
-
-        <TabsContent value="historico" className="mt-6">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Data</TableHead>
-                <TableHead>Ação</TableHead>
-                <TableHead>Lote</TableHead>
-                <TableHead>Paciente / Destino</TableHead>
-                <TableHead className="text-right">Qtd</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {MOCK_DETALHE.movimentacoes.map((mov, idx) => (
-                <TableRow key={idx}>
-                  <TableCell>{mov.data}</TableCell>
-                  <TableCell>
-                    <div className="flex items-center gap-2">
-                      <Activity size={14} className={mov.qtd > 0 ? "text-emerald-500" : "text-orange-500"} />
-                      {mov.acao}
-                    </div>
-                  </TableCell>
-                  <TableCell className="font-mono text-xs">{mov.lote}</TableCell>
-                  <TableCell>{mov.paciente}</TableCell>
-                  <TableCell className={cn("text-right font-bold", mov.qtd > 0 ? "text-emerald-600" : "text-orange-600")}>
-                    {mov.qtd > 0 ? `+${mov.qtd}` : mov.qtd}
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
         </TabsContent>
       </Tabs>
     </div>
   );
 }
 
-export default function MedicamentoDetalhe() {
+export default function EstoquePage() {
   return (
-    <Suspense fallback={<div className="p-8 text-slate-500 font-medium">Carregando Auditoria e Dados FEFO...</div>}>
-      <MedicamentoContent />
+    <Suspense fallback={<div className="p-8 text-slate-500 font-medium">Carregando Estoque e Dados FEFO...</div>}>
+      <EstoqueContent />
     </Suspense>
   );
 }

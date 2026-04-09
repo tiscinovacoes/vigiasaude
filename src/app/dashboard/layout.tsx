@@ -18,7 +18,8 @@ import {
   ShoppingCart,
   PackageCheck,
   Building2,
-  Timer
+  Timer,
+  ShieldCheck
 } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
@@ -37,6 +38,7 @@ const MENU_ITEMS = [
   { icon: Building2, label: 'Fornecedores', href: '/dashboard/fornecedores' },
   { icon: Timer, label: 'Lead Time', href: '/dashboard/lead-time' },
   { icon: ShieldAlert, label: 'Motor de Recall', href: '/dashboard/recall' },
+  { icon: ShieldCheck, label: 'Auditoria Master', href: '/dashboard/auditoria' },
   { icon: FileText, label: 'Relatórios', href: '/dashboard/relatorios' },
 ];
 
@@ -101,6 +103,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         <div className="p-2 space-y-1">
           <Separator className="bg-white/10 mb-2" />
           <button
+            onClick={() => router.push('/dashboard/configuracao')}
             className={cn(
               'w-full flex items-center gap-3 rounded-xl px-4 py-3 font-bold text-sm text-blue-100 hover:bg-white/10 hover:text-white transition-all',
               collapsed && 'justify-center px-3'
@@ -111,8 +114,12 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             {!collapsed && <span>Configuração</span>}
           </button>
           <button
-            onClick={() => {
+            onClick={async () => {
               toast.info('Encerrando sessão auditada...');
+              try {
+                const { supabase } = await import('@/lib/supabase');
+                await supabase.auth.signOut();
+              } catch (_) {}
               router.push('/');
             }}
             className={cn(
@@ -149,7 +156,25 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             <Separator orientation="vertical" className="h-4" />
             <div className="flex items-center gap-2 text-slate-400">
               <Search size={16} />
-              <span className="text-xs font-medium">Buscador Global (S/N, CPF, Lote)</span>
+              <input 
+                type="text" 
+                placeholder="Buscador Global (S/N, CPF, Lote)..." 
+                className="text-xs font-medium bg-transparent border-none outline-none w-64 text-slate-600"
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    const val = e.currentTarget.value.toUpperCase();
+                    if (val.startsWith('LT-')) {
+                      router.push(`/dashboard/recall?q=${val}`);
+                      toast.info(`Iniciando investigação de Lote: ${val}`);
+                    } else if (val.length >= 11) {
+                      router.push(`/dashboard/pacientes?q=${val}`);
+                      toast.info(`Buscando registro de CPF: ${val}`);
+                    } else {
+                      toast.warning('Insira um Lote (LT-...) ou CPF completo.');
+                    }
+                  }
+                }}
+              />
             </div>
           </div>
           <div className="flex items-center gap-4">

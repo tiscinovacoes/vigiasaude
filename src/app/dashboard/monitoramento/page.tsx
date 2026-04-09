@@ -1,5 +1,7 @@
 'use client';
 
+import dynamic from 'next/dynamic';
+import { useEffect, useState } from 'react';
 import { 
   ResizableHandle, 
   ResizablePanel, 
@@ -14,36 +16,57 @@ import {
   MapPin,
   Clock,
   ShieldCheck,
-  Activity
+  Activity,
+  Loader2
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
+import { api, EntregaLogistica } from '@/lib/api';
 
-const MOCK_MOTORES = [
-  { id: 'MOT-01', nome: 'Carlos Silva', status: 'Em Rota', temp: '4.2°C', progresso: '85%', alerta: false },
-  { id: 'MOT-02', nome: 'João Souza', status: 'Risco de Desvio', temp: '5.1°C', progresso: '40%', alerta: true },
-  { id: 'MOT-03', nome: 'Marcos Lima', status: 'Concluído', temp: '4.8°C', progresso: '100%', alerta: false },
-];
+// Dynamic import for Leaflet (No SSR)
+const MapRealTime = dynamic(() => import('@/components/MapRealTime'), { 
+  ssr: false,
+  loading: () => <div className="h-full w-full bg-slate-100 flex items-center justify-center animate-pulse"><Loader2 className="animate-spin text-slate-400" /></div>
+});
 
 export default function MonitoramentoPage() {
+  const [entregas, setEntregas] = useState<EntregaLogistica[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    async function loadData() {
+      const data = await api.getEntregasLogistica();
+      setEntregas(data);
+      setLoading(false);
+    }
+    loadData();
+  }, []);
+
+  const mapMarkers = (entregas || []).map(e => ({
+    id: e.id,
+    lat: e.lat_entrega || -22.2234 + (Math.random() - 0.5) * 0.05, // Mock coords if null
+    lng: e.lng_entrega || -54.8064 + (Math.random() - 0.5) * 0.05,
+    label: e.pacientes?.nome_completo || 'Entrega Pendente',
+    status: e.status_entrega
+  }));
+
   return (
     <div className="h-full w-full bg-slate-100 flex flex-col">
       <ResizablePanelGroup direction="horizontal" className="flex-1">
         
-        {/* LADO ESQUERDO: MAPA (Simulado) */}
+        {/* LADO ESQUERDO: MAPA REAL */}
         <ResizablePanel defaultSize={70}>
-          <div className="h-full w-full bg-slate-200 relative flex items-center justify-center overflow-hidden">
-             <div className="absolute inset-0 opacity-20 pointer-events-none" style={{ backgroundImage: 'url("https://www.google.com/maps/vt/pb=!1m4!1m3!1i12!2i1308!3i2295!2m3!1e0!2sm!3i633140546!3m8!2spt-BR!3sUS!5e1105!12m4!1e68!2m2!1sset!2sRoadmap!4e0!5m1!5f2!23i1301875")' }} />
-             <div className="z-10 text-slate-400 font-bold flex flex-col items-center gap-4">
-                <Navigation size={48} className="animate-bounce" />
-                <p className="uppercase tracking-widest text-xs">Mapa Tático de Municipio Teste-MS (Simulado)</p>
-             </div>
+          <div className="h-full w-full relative overflow-hidden">
+             <MapRealTime markers={mapMarkers} />
 
              {/* Indicadores Flutuantes no Mapa */}
-             <div className="absolute top-6 left-6 p-4 bg-white/90 backdrop-blur rounded-xl border shadow-xl flex items-center gap-4 animate-in fade-in slide-in-from-top-4">
+             <div className="absolute top-6 left-6 p-4 bg-white/90 backdrop-blur rounded-xl border shadow-xl flex items-center gap-4 z-[1000] animate-in fade-in slide-in-from-left-4">
                 <div className="w-10 h-10 bg-[#1E3A8A] text-white rounded-lg flex items-center justify-center"><Truck size={20}/></div>
-                <div><p className="text-[10px] font-black text-slate-500 uppercase">Veículos Ativos</p><h3 className="text-xl font-black">12/15</h3></div>
+                <div>
+                   <p className="text-[10px] font-black text-slate-500 uppercase">Monitoramento Tático</p>
+                   <h3 className="text-xl font-black">{entregas.length} Entregas</h3>
+                </div>
              </div>
           </div>
         </ResizablePanel>
@@ -62,38 +85,44 @@ export default function MonitoramentoPage() {
 
               <ScrollArea className="flex-1">
                  <div className="p-4 space-y-4">
-                    {MOCK_MOTORES.map((motor) => (
-                      <div key={motor.id} className={`p-4 rounded-xl border transition-all cursor-pointer ${motor.alerta ? 'border-red-200 bg-red-50/50 shadow-sm' : 'hover:bg-slate-50'}`}>
-                         <div className="flex justify-between items-start mb-3">
-                            <div>
-                               <h4 className="font-bold text-slate-900 text-sm">{motor.nome}</h4>
-                               <p className="text-[10px] font-mono text-slate-500 uppercase">{motor.id}</p>
+                    {loading ? (
+                       <div className="flex flex-col items-center justify-center p-12 text-slate-400 gap-2">
+                          <Loader2 className="animate-spin" />
+                          <span className="text-xs font-bold uppercase tracking-widest">Sincronizando...</span>
+                       </div>
+                    ) : entregas.length === 0 ? (
+                       <div className="p-8 text-center text-slate-400">
+                          <Truck size={40} className="mx-auto mb-4 opacity-20" />
+                          <p className="text-sm font-medium">Nenhuma entrega ativa no momento.</p>
+                       </div>
+                    ) : (
+                       entregas.map((entrega) => (
+                         <div key={entrega.id} className="p-4 rounded-xl border hover:bg-slate-50 transition-all cursor-pointer">
+                            <div className="flex justify-between items-start mb-3">
+                               <div>
+                                  <h4 className="font-bold text-slate-900 text-sm">{entrega.pacientes?.nome_completo || 'S/ Nome'}</h4>
+                                  <p className="text-[10px] font-mono text-slate-500 uppercase">{entrega.motoristas?.nome || 'Aguardando Motorista'}</p>
+                               </div>
+                               <Badge variant={entrega.status_entrega === 'FALHA' ? 'destructive' : 'outline'}>{entrega.status_entrega}</Badge>
                             </div>
-                            <Badge variant={motor.alerta ? 'destructive' : 'outline'}>{motor.status}</Badge>
-                         </div>
 
-                         <div className="grid grid-cols-2 gap-2 mb-4">
-                            <div className="bg-white p-2 rounded-lg border flex items-center gap-2">
-                               <Thermometer size={14} className={motor.alerta ? 'text-red-500 animate-pulse' : 'text-blue-500'} />
-                               <span className="text-xs font-black">{motor.temp}</span>
+                            <div className="grid grid-cols-2 gap-2 mb-4">
+                               <div className="bg-white p-2 rounded-lg border flex items-center gap-2">
+                                  <Thermometer size={14} className="text-blue-500" />
+                                  <span className="text-xs font-black">4.5°C</span>
+                               </div>
+                               <div className="bg-white p-2 rounded-lg border flex items-center gap-2">
+                                  <Clock size={14} className="text-slate-400" />
+                                  <span className="text-xs font-black">Em Rota</span>
+                               </div>
                             </div>
-                            <div className="bg-white p-2 rounded-lg border flex items-center gap-2">
-                               <Clock size={14} className="text-slate-400" />
-                               <span className="text-xs font-black">{motor.progresso}</span>
-                            </div>
-                         </div>
 
-                         {motor.alerta ? (
-                           <div className="bg-red-600 text-white p-2 rounded-lg text-[10px] font-black flex items-center gap-2 animate-pulse-red">
-                              <AlertTriangle size={14}/> AGUARDANDO INTERCEPTAÇÃO RECALL
-                           </div>
-                         ) : (
-                           <Button size="sm" variant="outline" className="w-full text-[10px] h-8 font-bold gap-2">
-                              <MapPin size={12}/> Ver Trajeto
-                           </Button>
-                         )}
-                      </div>
-                    ))}
+                            <Button size="sm" variant="outline" className="w-full text-[10px] h-8 font-bold gap-2">
+                               <MapPin size={12}/> Detalhes da Rota
+                            </Button>
+                         </div>
+                       ))
+                    )}
                  </div>
               </ScrollArea>
 

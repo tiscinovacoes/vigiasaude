@@ -39,32 +39,65 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Checkbox } from '@/components/ui/checkbox';
 import { Badge } from '@/components/ui/badge';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { toast } from 'sonner';
+import { cn } from '@/lib/utils';
 
-const MOCK_RECALL_DATA = {
+import { api, Lote } from '@/lib/api';
+
+type RecallResult = {
+  id: string;
+  nome: string;
+  lote: string;
+  status: string;
+  data: string;
+};
+
+const MOCK_RECALL_DATA: {
+  activeCount: number;
+  stockLocked: number;
+  inTransit: number;
+  patientsNotified: number;
+  results: RecallResult[];
+} = {
   activeCount: 154,
-  stockLocked: 42,
-  inTransit: 12,
-  patientsNotified: 100,
-  results: [
-    { id: 'PAC-001', nome: 'Ana Maria Silva', lote: 'LT-2023-A99', status: 'Notificado (SMS)', data: '2024-03-24 14:00' },
-    { id: 'PAC-002', nome: 'Beto Carvalho', lote: 'LT-2023-A99', status: 'Aguardando Disparo', data: '-' },
-    { id: 'PAC-003', nome: 'Carla Dias', lote: 'LT-2023-A99', status: 'Confirmado Recebimento', data: '2024-03-24 15:30' },
-  ]
+  stockLocked: 0,
+  inTransit: 0,
+  patientsNotified: 0,
+  results: []
 };
 
 export default function RecallPage() {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedLote, setSelectedLote] = useState<string | null>(null);
+  const [loteData, setLoteData] = useState<any>(null);
+  const [loading, setLoading] = useState(false);
 
-  const handleSearch = () => {
-    if (searchTerm.toUpperCase() === 'LT-2023-A99') {
-      setSelectedLote('LT-2023-A99');
-      toast.error('Lote Crítico Detectado! Iniciando Motor de Recall.');
-    } else {
-      toast.warning('Nenhum risco imediato para este ID.');
+  const handleSearch = async () => {
+    if (!searchTerm) return;
+    setLoading(true);
+    
+    try {
+      const allLotes = await api.getLotes();
+      const match = allLotes.find(l => 
+        l.codigo_lote_fabricante.toUpperCase() === searchTerm.toUpperCase() || 
+        l.id === searchTerm
+      );
+
+      if (match) {
+        setSelectedLote(match.codigo_lote_fabricante);
+        setLoteData(match);
+        toast.error(`Lote ${match.codigo_lote_fabricante} identificado no sistema! Iniciando bloqueio WMS.`);
+      } else {
+        setSelectedLote(null);
+        toast.warning('Nenhum lote crítico encontrado com este ID.');
+      }
+    } catch (err) {
+      toast.error('Erro ao consultar base de rastreabilidade.');
+    } finally {
+      setLoading(false);
     }
   };
 

@@ -1,7 +1,6 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
 import { 
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, Legend, ResponsiveContainer 
 } from 'recharts';
@@ -9,7 +8,8 @@ import {
   AlertOctagon, Clock, TrendingDown, DollarSign, 
   Users, UserPlus, Activity, Truck, AlertTriangle,
   ArrowUpRight,
-  TrendingUp
+  TrendingUp,
+  Package
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { 
@@ -30,10 +30,10 @@ import {
   TableHeader, 
   TableRow 
 } from '@/components/ui/table';
-import { api } from '@/lib/api';
+import { api, type Fornecedor, type KpisDashboard } from '@/lib/api';
 import { cn } from '@/lib/utils';
 
-const MOCK_CHART_DATA = [
+const FALLBACK_CHART_DATA = [
   { month: 'Out', entrada: 4000, consumo: 2400 },
   { month: 'Nov', entrada: 3000, consumo: 1398 },
   { month: 'Dez', entrada: 2000, consumo: 9800 },
@@ -42,20 +42,42 @@ const MOCK_CHART_DATA = [
   { month: 'Mar', entrada: 2390, consumo: 3800 },
 ];
 
-const MOCK_SUPPLIERS = [
-  { id: '1', nome: 'MedSupply Nacional Ltda', pontualidade: 98, lead_time: 4, compras: 145 },
-  { id: '2', nome: 'FarmaLog Distribuidora', pontualidade: 92, lead_time: 7, compras: 89 },
-  { id: '3', nome: 'Global Health BR', pontualidade: 85, lead_time: 12, compras: 230 },
-];
-
 export default function ExecutiveDashboard() {
   const [loading, setLoading] = useState(true);
+  const [kpis, setKpis] = useState<KpisDashboard | null>(null);
+  const [fornecedores, setFornecedores] = useState<Fornecedor[]>([]);
+  const [chartData, setChartData] = useState(FALLBACK_CHART_DATA);
+  const [dataSource, setDataSource] = useState<'live' | 'fallback'>('fallback');
   
   useEffect(() => {
-    // Simulando carregamento dinâmico via api.ts (que tem fallback mock)
-    const timer = setTimeout(() => setLoading(false), 800);
-    return () => clearTimeout(timer);
+    loadDashboardData();
   }, []);
+
+  const loadDashboardData = async () => {
+    setLoading(true);
+    try {
+      // Carregar KPIs
+      const kpisData = await api.getKpisDashboard();
+      setKpis(kpisData);
+
+      // Carregar fornecedores
+      const fornsData = await api.getFornecedores();
+      if (fornsData.length > 0) {
+        setFornecedores(fornsData);
+        setDataSource('live');
+      }
+
+      // Carregar dados do gráfico
+      const consumoData = await api.getConsumoMensal();
+      if (consumoData.length > 0) {
+        setChartData(consumoData);
+      }
+    } catch (err) {
+      console.error('Erro ao carregar dashboard:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   if (loading) {
     return (
@@ -80,8 +102,12 @@ export default function ExecutiveDashboard() {
           <h1 className="text-3xl font-black text-slate-800 tracking-tight">Dashboard Executivo</h1>
           <p className="text-slate-500 font-medium mt-1">Monitoramento de Segurança Sanitária e Eficiência Logística</p>
         </div>
-        <Badge variant="outline" className="h-8 px-4 bg-white border-slate-200 text-slate-500 gap-2 font-bold uppercase tracking-widest text-[10px]">
-          <Activity size={14} className="text-emerald-500" /> Live: Municipio Teste-MS
+        <Badge variant="outline" className={cn(
+          "h-8 px-4 bg-white border-slate-200 gap-2 font-bold uppercase tracking-widest text-[10px]",
+          dataSource === 'live' ? 'text-emerald-600 border-emerald-200' : 'text-slate-500'
+        )}>
+          <Activity size={14} className={dataSource === 'live' ? 'text-emerald-500' : 'text-orange-400'} />
+          {dataSource === 'live' ? 'Live: Supabase Conectado' : 'Modo: Dados Locais'}
         </Badge>
       </div>
 
@@ -89,35 +115,35 @@ export default function ExecutiveDashboard() {
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         <KPIItem 
            title="Estoque Crítico" 
-           value="12" 
-           trend="+2" 
+           value={kpis?.estoqueCritico?.toString() || '0'} 
+           trend={kpis && kpis.estoqueCritico > 0 ? `${kpis.estoqueCritico} itens` : 'OK'} 
            icon={AlertOctagon} 
-           color="destructive" 
+           color={kpis && kpis.estoqueCritico > 0 ? 'destructive' : 'success'} 
            desc="Itens abaixo do mínimo" 
         />
         <KPIItem 
            title="Lead Time Médio" 
-           value="4.2d" 
-           trend="-0.5d" 
+           value={kpis?.leadTimeMedio ? `${kpis.leadTimeMedio}d` : '0d'} 
+           trend="Fornecedores" 
            icon={Clock} 
            color="primary" 
            desc="Geral dos fornecedores" 
         />
         <KPIItem 
-           title="Economia CMED" 
-           value="R$ 125k" 
-           trend="+12%" 
-           icon={DollarSign} 
+           title="Pacientes Ativos" 
+           value={kpis?.totalPacientes?.toString() || '0'} 
+           trend="Cadastrados" 
+           icon={Users} 
            color="success" 
-           desc="Mês atual vs Tabela" 
+           desc="No sistema" 
         />
         <KPIItem 
            title="Entregas Ativas" 
-           value="45" 
-           trend="12 Vans" 
+           value={kpis?.entregasAtivas?.toString() || '0'} 
+           trend={`${kpis?.entregasConcluidas || 0} concluídas`} 
            icon={Truck} 
            color="info" 
-           desc="Em rota agora" 
+           desc="Em rota ou pendentes" 
         />
       </div>
 
@@ -133,7 +159,7 @@ export default function ExecutiveDashboard() {
           </CardHeader>
           <CardContent className="h-[350px]">
              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={MOCK_CHART_DATA}>
+                <BarChart data={chartData}>
                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
                    <XAxis dataKey="month" axisLine={false} tickLine={false} tick={{ fill: '#64748b', fontSize: 12 }} />
                    <YAxis axisLine={false} tickLine={false} tick={{ fill: '#64748b', fontSize: 12 }} />
@@ -154,25 +180,46 @@ export default function ExecutiveDashboard() {
               <CardTitle className="text-lg font-black flex items-center gap-2 text-[#DC2626]">
                  <AlertTriangle size={20} className="animate-pulse" /> Risco de Ruptura
               </CardTitle>
-              <CardDescription>Medicamentos com cobertura inferior a 5 dias</CardDescription>
+              <CardDescription>
+                {kpis && kpis.lotesVencimentoProximo > 0 
+                  ? `${kpis.lotesVencimentoProximo} lotes com vencimento em até 90 dias`
+                  : 'Lotes com cobertura inferior a 90 dias'
+                }
+              </CardDescription>
            </CardHeader>
            <CardContent className="space-y-4">
-              {[
-                { nome: 'Insulina NPH 100UI', stock: 150, min: 500, days: 2 },
-                { nome: 'Sinvastatina 20mg', stock: 1200, min: 2000, days: 5 },
-              ].map((item, i) => (
-                <div key={i} className="p-4 rounded-xl bg-slate-50 border border-slate-100 flex justify-between items-center group hover:bg-white hover:shadow-md transition-all">
-                   <div>
-                      <h4 className="font-bold text-sm text-slate-800">{item.nome}</h4>
-                      <div className="flex items-center gap-2 mt-1">
-                         <span className="text-[10px] font-black text-red-600 uppercase">Apenas {item.days} dias</span>
-                         <div className="w-1 h-1 bg-slate-300 rounded-full" />
-                         <span className="text-[10px] font-bold text-slate-500">{item.stock} / {item.min} un</span>
-                      </div>
-                   </div>
-                   <ArrowUpRight size={18} className="text-slate-300 group-hover:text-red-500 transition-colors" />
+              {kpis && kpis.estoqueCritico > 0 ? (
+                <div className="p-4 rounded-xl bg-red-50 border border-red-100 flex justify-between items-center">
+                  <div>
+                    <h4 className="font-bold text-sm text-slate-800">{kpis.estoqueCritico} medicamentos em risco</h4>
+                    <div className="flex items-center gap-2 mt-1">
+                      <span className="text-[10px] font-black text-red-600 uppercase">Estoque abaixo do mínimo</span>
+                    </div>
+                  </div>
+                  <ArrowUpRight size={18} className="text-red-500" />
                 </div>
-              ))}
+              ) : (
+                <div className="p-4 rounded-xl bg-emerald-50 border border-emerald-100 flex justify-between items-center">
+                  <div>
+                    <h4 className="font-bold text-sm text-slate-800">Tudo sob controle</h4>
+                    <div className="flex items-center gap-2 mt-1">
+                      <span className="text-[10px] font-black text-emerald-600 uppercase">Nenhum item crítico</span>
+                    </div>
+                  </div>
+                  <Package size={18} className="text-emerald-500" />
+                </div>
+              )}
+              {kpis && kpis.lotesVencimentoProximo > 0 && (
+                <div className="p-4 rounded-xl bg-orange-50 border border-orange-100 flex justify-between items-center group hover:bg-white hover:shadow-md transition-all">
+                  <div>
+                    <h4 className="font-bold text-sm text-slate-800">Vencimento Próximo</h4>
+                    <div className="flex items-center gap-2 mt-1">
+                      <span className="text-[10px] font-black text-orange-600 uppercase">{kpis.lotesVencimentoProximo} lotes com validade &lt; 90 dias</span>
+                    </div>
+                  </div>
+                  <ArrowUpRight size={18} className="text-slate-300 group-hover:text-orange-500 transition-colors" />
+                </div>
+              )}
            </CardContent>
         </Card>
       </div>
@@ -181,37 +228,52 @@ export default function ExecutiveDashboard() {
       <Card className="border-none shadow-sm overflow-hidden">
         <CardHeader className="bg-white">
            <CardTitle className="text-lg font-black">Performance de Fornecedores</CardTitle>
-           <CardDescription>Ranking auditado por pontualidade e conformidade fiscal (CMED)</CardDescription>
+           <CardDescription>
+             {fornecedores.length > 0 
+               ? `Ranking auditado — ${fornecedores.length} fornecedores cadastrados`
+               : 'Nenhum fornecedor cadastrado no sistema'
+             }
+           </CardDescription>
         </CardHeader>
-        <Table>
-           <TableHeader className="bg-slate-50">
-              <TableRow>
-                 <TableHead>Fornecedor</TableHead>
-                 <TableHead>Pontualidade</TableHead>
-                 <TableHead>Lead Time</TableHead>
-                 <TableHead className="text-right">Ações</TableHead>
-              </TableRow>
-           </TableHeader>
-           <TableBody>
-              {MOCK_SUPPLIERS.map((forn) => (
-                <TableRow key={forn.id}>
-                   <TableCell className="font-bold text-slate-700">{forn.nome}</TableCell>
-                   <TableCell className="w-64">
-                      <div className="flex items-center gap-3">
-                         <Progress value={forn.pontualidade} className="h-1.5 flex-1" />
-                         <span className="text-xs font-black text-slate-600">{forn.pontualidade}%</span>
-                      </div>
-                   </TableCell>
-                   <TableCell>
-                      <Badge variant="secondary" className="font-bold text-[10px]">{forn.lead_time} DIAS</Badge>
-                   </TableCell>
-                   <TableCell className="text-right">
-                      <Button variant="ghost" size="sm" className="font-bold text-[#1E3A8A]">Auditar Pedidos</Button>
-                   </TableCell>
+        {fornecedores.length > 0 ? (
+          <Table>
+             <TableHeader className="bg-slate-50">
+                <TableRow>
+                   <TableHead>Fornecedor</TableHead>
+                   <TableHead>CNPJ</TableHead>
+                   <TableHead>Pontualidade</TableHead>
+                   <TableHead>Lead Time</TableHead>
+                   <TableHead className="text-right">Valor Contratado</TableHead>
                 </TableRow>
-              ))}
-           </TableBody>
-        </Table>
+             </TableHeader>
+             <TableBody>
+                {fornecedores.slice(0, 5).map((forn) => (
+                  <TableRow key={forn.id}>
+                     <TableCell className="font-bold text-slate-700">{forn.razao_social}</TableCell>
+                     <TableCell className="font-mono text-xs text-slate-500">{forn.cnpj}</TableCell>
+                     <TableCell className="w-64">
+                        <div className="flex items-center gap-3">
+                           <Progress value={forn.pontualidade_percentual} className="h-1.5 flex-1" />
+                           <span className="text-xs font-black text-slate-600">{forn.pontualidade_percentual}%</span>
+                        </div>
+                     </TableCell>
+                     <TableCell>
+                        <Badge variant="secondary" className="font-bold text-[10px]">{forn.lead_time_medio} DIAS</Badge>
+                     </TableCell>
+                     <TableCell className="text-right font-bold text-slate-700">
+                        R$ {forn.valor_total_contratado?.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                     </TableCell>
+                  </TableRow>
+                ))}
+             </TableBody>
+          </Table>
+        ) : (
+          <div className="p-12 text-center text-slate-400">
+            <Users size={40} className="mx-auto mb-3 opacity-50" />
+            <p className="font-bold">Nenhum fornecedor cadastrado</p>
+            <p className="text-sm mt-1">Cadastre fornecedores para visualizar o ranking de performance.</p>
+          </div>
+        )}
       </Card>
     </div>
   );
