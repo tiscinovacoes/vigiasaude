@@ -36,6 +36,7 @@ CREATE TABLE IF NOT EXISTS fornecedores (
 
 CREATE TABLE IF NOT EXISTS medicamentos (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    codigo TEXT,                            -- SKU / código interno
     nome TEXT NOT NULL,
     dosagem TEXT,
     estoque_minimo INTEGER DEFAULT 0,
