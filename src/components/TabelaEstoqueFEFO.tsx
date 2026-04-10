@@ -14,6 +14,18 @@ export function TabelaEstoqueFEFO() {
 
   useEffect(() => {
     loadLotes();
+
+    // Ouvir evento global de recall disparado pelo RecallListener
+    const handleRecall = () => {
+      console.log('🔄 Recall detectado! Recarregando lista de lotes (FEFO)...');
+      loadLotes();
+    };
+
+    window.addEventListener('recall-detected', handleRecall);
+
+    return () => {
+      window.removeEventListener('recall-detected', handleRecall);
+    };
   }, []);
 
   const loadLotes = async () => {
@@ -108,7 +120,11 @@ export function TabelaEstoqueFEFO() {
                       </TableCell>
                       <TableCell className="text-right font-bold">{lote.quantidade_disponivel} un.</TableCell>
                       <TableCell className="text-right font-mono text-xs">
-                        R$ {lote.custo_unitario_compra?.toFixed(2).replace('.', ',')}
+                        {lote.custo_unitario_compra !== null && lote.custo_unitario_compra !== undefined ? (
+                          `R$ ${lote.custo_unitario_compra.toFixed(2).replace('.', ',')}`
+                        ) : (
+                          <span className="text-slate-400 italic">Restrito</span>
+                        )}
                       </TableCell>
                       <TableCell className="flex justify-center">
                         <Tooltip>

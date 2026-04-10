@@ -32,6 +32,7 @@ import {
 } from '@/components/ui/table';
 import { api, type Fornecedor, type KpisDashboard } from '@/lib/api';
 import { cn } from '@/lib/utils';
+import Link from 'next/link';
 
 const FALLBACK_CHART_DATA = [
   { month: 'Out', entrada: 4000, consumo: 2400 },
@@ -120,6 +121,7 @@ export default function ExecutiveDashboard() {
            icon={AlertOctagon} 
            color={kpis && kpis.estoqueCritico > 0 ? 'destructive' : 'success'} 
            desc="Itens abaixo do mínimo" 
+           href="/dashboard/estoque"
         />
         <KPIItem 
            title="Lead Time Médio" 
@@ -128,6 +130,7 @@ export default function ExecutiveDashboard() {
            icon={Clock} 
            color="primary" 
            desc="Geral dos fornecedores" 
+           href="/dashboard/lead-time"
         />
         <KPIItem 
            title="Pacientes Ativos" 
@@ -136,6 +139,7 @@ export default function ExecutiveDashboard() {
            icon={Users} 
            color="success" 
            desc="No sistema" 
+           href="/dashboard/pacientes"
         />
         <KPIItem 
            title="Entregas Ativas" 
@@ -144,6 +148,7 @@ export default function ExecutiveDashboard() {
            icon={Truck} 
            color="info" 
            desc="Em rota ou pendentes" 
+           href="/dashboard/entregas"
         />
       </div>
 
@@ -181,44 +186,44 @@ export default function ExecutiveDashboard() {
                  <AlertTriangle size={20} className="animate-pulse" /> Risco de Ruptura
               </CardTitle>
               <CardDescription>
-                {kpis && kpis.lotesVencimentoProximo > 0 
-                  ? `${kpis.lotesVencimentoProximo} lotes com vencimento em até 90 dias`
+                {kpis && kpis.riscoRupturaCount > 0 
+                  ? `${kpis.riscoRupturaCount} medicamentos com estoque < 7 dias`
                   : 'Lotes com cobertura inferior a 90 dias'
                 }
               </CardDescription>
            </CardHeader>
            <CardContent className="space-y-4">
-              {kpis && kpis.estoqueCritico > 0 ? (
-                <div className="p-4 rounded-xl bg-red-50 border border-red-100 flex justify-between items-center">
+              {kpis && kpis.riscoRupturaCount > 0 ? (
+                <Link href="/dashboard/estoque?tab=risco" className="p-4 rounded-xl bg-red-50 border border-red-100 flex justify-between items-center group cursor-pointer hover:bg-white hover:shadow-md transition-all">
                   <div>
-                    <h4 className="font-bold text-sm text-slate-800">{kpis.estoqueCritico} medicamentos em risco</h4>
+                    <h4 className="font-bold text-sm text-slate-800">{kpis.riscoRupturaCount} medicamentos em risco crítico</h4>
                     <div className="flex items-center gap-2 mt-1">
-                      <span className="text-[10px] font-black text-red-600 uppercase">Estoque abaixo do mínimo</span>
+                      <span className="text-[10px] font-black text-red-600 uppercase">Estoque para menos de 7 dias</span>
                     </div>
                   </div>
-                  <ArrowUpRight size={18} className="text-red-500" />
-                </div>
+                  <ArrowUpRight size={18} className="text-red-500 group-hover:scale-110 transition-transform" />
+                </Link>
               ) : (
-                <div className="p-4 rounded-xl bg-emerald-50 border border-emerald-100 flex justify-between items-center">
+                <Link href="/dashboard/estoque" className="p-4 rounded-xl bg-emerald-50 border border-emerald-100 flex justify-between items-center group cursor-pointer hover:bg-white hover:shadow-md transition-all">
                   <div>
                     <h4 className="font-bold text-sm text-slate-800">Tudo sob controle</h4>
                     <div className="flex items-center gap-2 mt-1">
                       <span className="text-[10px] font-black text-emerald-600 uppercase">Nenhum item crítico</span>
                     </div>
                   </div>
-                  <Package size={18} className="text-emerald-500" />
-                </div>
+                  <Package size={18} className="text-emerald-500 group-hover:scale-110 transition-transform" />
+                </Link>
               )}
               {kpis && kpis.lotesVencimentoProximo > 0 && (
-                <div className="p-4 rounded-xl bg-orange-50 border border-orange-100 flex justify-between items-center group hover:bg-white hover:shadow-md transition-all">
+                <Link href="/dashboard/estoque?tab=lotes" className="p-4 rounded-xl bg-orange-50 border border-orange-100 flex justify-between items-center group hover:bg-white hover:shadow-md transition-all cursor-pointer">
                   <div>
                     <h4 className="font-bold text-sm text-slate-800">Vencimento Próximo</h4>
                     <div className="flex items-center gap-2 mt-1">
                       <span className="text-[10px] font-black text-orange-600 uppercase">{kpis.lotesVencimentoProximo} lotes com validade &lt; 90 dias</span>
                     </div>
                   </div>
-                  <ArrowUpRight size={18} className="text-slate-300 group-hover:text-orange-500 transition-colors" />
-                </div>
+                  <ArrowUpRight size={18} className="text-slate-300 group-hover:text-orange-500 group-hover:scale-110 transition-all" />
+                </Link>
               )}
            </CardContent>
         </Card>
@@ -239,29 +244,56 @@ export default function ExecutiveDashboard() {
           <Table>
              <TableHeader className="bg-slate-50">
                 <TableRow>
-                   <TableHead>Fornecedor</TableHead>
-                   <TableHead>CNPJ</TableHead>
-                   <TableHead>Pontualidade</TableHead>
-                   <TableHead>Lead Time</TableHead>
-                   <TableHead className="text-right">Valor Contratado</TableHead>
+                   <TableHead className="font-bold text-slate-800 uppercase text-[10px] tracking-widest">Fornecedor</TableHead>
+                   <TableHead className="font-bold text-slate-800 uppercase text-[10px] tracking-widest">Performance</TableHead>
+                   <TableHead className="font-bold text-slate-800 uppercase text-[10px] tracking-widest">Status Ranking</TableHead>
+                   <TableHead className="font-bold text-slate-800 uppercase text-[10px] tracking-widest text-center">Lead Time</TableHead>
+                   <TableHead className="text-right font-bold text-slate-800 uppercase text-[10px] tracking-widest">Total Contratado</TableHead>
                 </TableRow>
              </TableHeader>
              <TableBody>
                 {fornecedores.slice(0, 5).map((forn) => (
-                  <TableRow key={forn.id}>
-                     <TableCell className="font-bold text-slate-700">{forn.razao_social}</TableCell>
-                     <TableCell className="font-mono text-xs text-slate-500">{forn.cnpj}</TableCell>
-                     <TableCell className="w-64">
+                  <TableRow key={forn.id} className="group hover:bg-slate-50/80 transition-colors">
+                     <TableCell>
+                        <div className="flex flex-col">
+                          <span className="font-bold text-slate-700 leading-none">{forn.razao_social}</span>
+                          <span className="text-[10px] font-mono text-slate-400 mt-1 uppercase tracking-tighter">{forn.cnpj}</span>
+                        </div>
+                     </TableCell>
+                     <TableCell className="w-48">
                         <div className="flex items-center gap-3">
-                           <Progress value={forn.pontualidade_percentual} className="h-1.5 flex-1" />
+                           <div className="h-1.5 flex-1 bg-slate-100 rounded-full overflow-hidden">
+                             <div 
+                               className={cn(
+                                 "h-full rounded-full transition-all duration-1000",
+                                 forn.pontualidade_percentual >= 95 ? "bg-emerald-500" :
+                                 forn.pontualidade_percentual >= 85 ? "bg-blue-500" : "bg-orange-500"
+                               )} 
+                               style={{ width: `${forn.pontualidade_percentual}%` }} 
+                             />
+                           </div>
                            <span className="text-xs font-black text-slate-600">{forn.pontualidade_percentual}%</span>
                         </div>
                      </TableCell>
                      <TableCell>
-                        <Badge variant="secondary" className="font-bold text-[10px]">{forn.lead_time_medio} DIAS</Badge>
+                        {forn.pontualidade_percentual >= 95 ? (
+                          <Badge variant="outline" className="bg-emerald-50 text-emerald-600 border-emerald-100 text-[10px] font-black uppercase">EXCELENTE</Badge>
+                        ) : forn.pontualidade_percentual >= 85 ? (
+                          <Badge variant="outline" className="bg-blue-50 text-blue-600 border-blue-100 text-[10px] font-black uppercase">CONFIÁVEL</Badge>
+                        ) : (
+                          <Badge variant="outline" className="bg-orange-50 text-orange-600 border-orange-100 text-[10px] font-black uppercase">EM ALERTA</Badge>
+                        )}
                      </TableCell>
-                     <TableCell className="text-right font-bold text-slate-700">
-                        R$ {forn.valor_total_contratado?.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                     <TableCell className="text-center">
+                        <div className="flex items-center justify-center gap-1.5">
+                          <Clock size={12} className="text-slate-400" />
+                          <span className="font-bold text-slate-700 text-sm">{forn.lead_time_medio} <span className="text-[10px] text-slate-400 font-medium">DIAS</span></span>
+                        </div>
+                     </TableCell>
+                     <TableCell className="text-right">
+                        <span className="font-black text-slate-800">
+                          R$ {forn.valor_total_contratado?.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                        </span>
                      </TableCell>
                   </TableRow>
                 ))}
@@ -279,7 +311,7 @@ export default function ExecutiveDashboard() {
   );
 }
 
-function KPIItem({ title, value, trend, icon: Icon, color, desc }: any) {
+function KPIItem({ title, value, trend, icon: Icon, color, desc, href }: any) {
    const colors: any = {
       destructive: "text-red-600 bg-red-50 border-red-100",
       primary: "text-blue-600 bg-blue-50 border-blue-100",
@@ -287,9 +319,9 @@ function KPIItem({ title, value, trend, icon: Icon, color, desc }: any) {
       info: "text-cyan-600 bg-cyan-50 border-cyan-100",
    };
 
-   return (
-      <div className={cn("p-6 rounded-2xl bg-white border shadow-sm flex items-start gap-4 hover:shadow-md transition-shadow", colors[color])}>
-         <div className="p-3 rounded-xl bg-white border shadow-sm">
+   const Content = (
+      <div className={cn("p-6 rounded-2xl bg-white border shadow-sm flex items-start gap-4 transition-all duration-200", href ? "hover:shadow-md group" : "", colors[color])}>
+         <div className={cn("p-3 rounded-xl bg-white border shadow-sm transition-transform duration-200", href ? "group-hover:scale-105" : "")}>
             <Icon size={24} />
          </div>
          <div>
@@ -302,4 +334,14 @@ function KPIItem({ title, value, trend, icon: Icon, color, desc }: any) {
          </div>
       </div>
    );
+
+   if (href) {
+      return (
+         <Link href={href} className="block w-full cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1E3A8A] rounded-2xl">
+            {Content}
+         </Link>
+      );
+   }
+
+   return Content;
 }

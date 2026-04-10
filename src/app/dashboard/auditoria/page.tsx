@@ -1,31 +1,49 @@
 'use client';
 
-import { useState } from 'react';
-import { ShieldCheck, Search, Filter, AlertTriangle, ShieldAlert, KeyRound, UserCog, History } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { api, auditoriaAPI } from '@/lib/api';
+import { 
+  ShieldCheck, UserCog, KeyRound, ShieldAlert, 
+  History, Search, Filter, Loader2, RefreshCw,
+  AlertCircle, Shield
+} from 'lucide-react';
 import { format } from 'date-fns';
+import { toast } from 'sonner';
 
 type LogAuditoria = {
   id: string;
-  timestamp: string;
+  created_at: string;
   ator: string;
-  perfil: 'Master' | 'Farmacêutico' | 'Motorista' | 'Sistema';
   acao: string;
-  recurso: string;
-  severidade: 'Baixa' | 'Média' | 'Alta' | 'Crítica';
-  metadados: string;
+  tabela_afetada: string;
+  severidade: string;
+  dados_anteriores: any;
+  dados_novos: any;
+  metadados: any;
 };
 
-const MOCK_LOGS: LogAuditoria[] = [
-  { id: 'log_99182', timestamp: '2023-11-01T14:32:05Z', ator: 'Sistema (Geofence)', perfil: 'Sistema', acao: 'INSERT_ALERTA_CRITICO', recurso: 'logs_auditoria.desvio_rota', severidade: 'Crítica', metadados: 'Distância: 1.4km | Lat/Lon: -22.2, -54.7' },
-  { id: 'log_99181', timestamp: '2023-11-01T10:15:00Z', ator: 'Carlos Santana (CRM-MS)', perfil: 'Master', acao: 'UPDATE_PRECO_CMED', recurso: 'medicamentos.sinvastatina', severidade: 'Média', metadados: 'Preço CMED alterado de R$1.50 para R$1.65' },
-  { id: 'log_99180', timestamp: '2023-11-01T08:00:22Z', ator: 'Ana P.', perfil: 'Farmacêutico', acao: 'DISPENSACAO_CONCLUIDA', recurso: 'ordens_dispensacao.DSP-119', severidade: 'Baixa', metadados: 'Lote selecionado (FEFO): LT-2023-B15' },
-  { id: 'log_99179', timestamp: '2023-10-31T20:44:11Z', ator: 'Sistema (Auth)', perfil: 'Sistema', acao: 'LOGIN_FALHO', recurso: 'auth.users', severidade: 'Alta', metadados: 'IP: 192.168.1.15 | Conta bloqueada temporariamente (3 tentativas)' },
-];
-
 export default function PainelAuditoriaMaster() {
-  const [logs] = useState<LogAuditoria[]>(MOCK_LOGS);
+  const [logs, setLogs] = useState<LogAuditoria[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [searchQuery, setSearchQuery] = useState('');
 
-  const getSeveridadeStyle = (sev: LogAuditoria['severidade']) => {
+  useEffect(() => {
+    loadLogs();
+  }, []);
+
+  const loadLogs = async () => {
+    setLoading(true);
+    try {
+      const data = await auditoriaAPI.getLogsRecentes();
+      setLogs(data as LogAuditoria[]);
+    } catch (err) {
+      toast.error('Erro ao carregar trilha de auditoria');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const getSeveridadeStyle = (sev: string) => {
     switch(sev) {
       case 'Crítica': return 'bg-red-100 text-red-700 border-red-200';
       case 'Alta': return 'bg-orange-100 text-orange-700 border-orange-200';
@@ -34,105 +52,186 @@ export default function PainelAuditoriaMaster() {
     }
   };
 
+  const filteredLogs = logs.filter(log => 
+    log.id.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    log.ator.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    log.tabela_afetada.toLowerCase().includes(searchQuery.toLowerCase())
+  );
+
+  // Reais estatísticas baseadas nos logs carregados
+  const stats = {
+    criticos: logs.filter(l => l.severidade === 'Crítica').length,
+    alta: logs.filter(l => l.severidade === 'Alta').length,
+    total: logs.length
+  };
+
   return (
-    <div className="p-8 space-y-6 bg-slate-50/50 min-h-screen">
+    <div className="p-8 space-y-8 bg-slate-50/50 min-h-screen pb-20">
       
       {/* HEADER */}
       <div className="flex items-start justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-slate-800 flex items-center gap-2">
-            <ShieldCheck className="text-[#1E3A8A]" size={28} />
-            Painel Master e Auditoria
+          <h1 className="text-3xl font-black text-slate-800 flex items-center gap-3 tracking-tight">
+            <ShieldCheck className="text-[#1E3A8A]" size={32} />
+            Compliance e Auditoria Master
           </h1>
-          <p className="text-sm text-slate-500 mt-1">Role-Based Access Control (RBAC) e Registro Imutável de Transações</p>
+          <p className="text-slate-500 font-medium mt-1">Garantia de Integridade Imutável e Rastreabilidade Transacional (WORM)</p>
         </div>
         <div className="flex gap-3">
-          <button className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 text-slate-700 rounded-lg hover:bg-slate-50 font-medium text-sm shadow-sm transition-colors">
-            <UserCog size={16}/> Gerir Permissões
+          <button onClick={loadLogs} className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 text-slate-700 rounded-xl hover:bg-slate-50 font-bold text-xs shadow-sm transition-all uppercase tracking-wider">
+            {loading ? <Loader2 size={16} className="animate-spin" /> : <RefreshCw size={16}/>} Atualizar Trilha
           </button>
-          <button className="flex items-center gap-2 px-4 py-2 bg-[#1E3A8A] border border-[#1E3A8A] text-white rounded-lg hover:bg-blue-900 font-medium text-sm shadow-sm transition-colors">
+          <button className="flex items-center gap-2 px-4 py-2 bg-[#1E3A8A] text-white rounded-xl hover:bg-blue-900 font-bold text-xs shadow-lg shadow-blue-100 transition-all uppercase tracking-wider">
             <KeyRound size={16}/> Políticas de Segurança
           </button>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 xl:grid-cols-4 gap-6">
+      <div className="grid grid-cols-1 xl:grid-cols-4 gap-8">
          {/* SIDEBAR DE STATUS E INFRAESTRUTURA */}
          <div className="xl:col-span-1 space-y-6">
-            <div className="bg-white p-6 rounded-[0.625rem] shadow-sm border border-slate-100">
-               <h3 className="font-bold text-slate-800 mb-4 flex items-center gap-2 text-sm uppercase tracking-wider">
-                 <ShieldAlert size={16} className="text-[#DC2626] animate-pulse-red" />
-                 Status do Sistema
+            <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
+               <h3 className="font-black text-slate-400 mb-6 flex items-center gap-2 text-[10px] uppercase tracking-[0.2em]">
+                 Status do Ecossistema
                </h3>
-               <div className="space-y-4">
-                 <div className="flex justify-between items-center pb-2 border-b border-slate-100">
-                   <p className="text-xs text-slate-500 font-medium">Bancodedados (Supabase)</p>
-                   <span className="flex items-center gap-1.5 text-emerald-600 text-xs font-bold"><span className="w-2 h-2 rounded-full bg-emerald-500 flex shrink-0" /> Operacional</span>
+               <div className="space-y-5">
+                 <div className="flex justify-between items-start">
+                   <div>
+                     <p className="text-xs text-slate-800 font-bold">Supabase DB</p>
+                     <p className="text-[10px] text-slate-400 font-medium">PostgreSQL High Availability</p>
+                   </div>
+                   <span className="flex items-center gap-1.5 text-emerald-600 text-[10px] font-black uppercase"><span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" /> Online</span>
                  </div>
-                 <div className="flex justify-between items-center pb-2 border-b border-slate-100">
-                   <p className="text-xs text-slate-500 font-medium">Motor FEFO</p>
-                   <span className="flex items-center gap-1.5 text-emerald-600 text-xs font-bold"><span className="w-2 h-2 rounded-full bg-emerald-500 flex shrink-0" /> Ativo</span>
+                 <div className="flex justify-between items-start">
+                   <div>
+                     <p className="text-xs text-slate-800 font-bold">Motor de Mensageria</p>
+                     <p className="text-[10px] text-slate-400 font-medium">Resilien Queue Mode</p>
+                   </div>
+                   <span className="flex items-center gap-1.5 text-emerald-600 text-[10px] font-black uppercase"><span className="w-1.5 h-1.5 rounded-full bg-emerald-500" /> Ativo</span>
                  </div>
-                 <div className="flex justify-between items-center">
-                   <p className="text-xs text-slate-500 font-medium">Serviço de Assinaturas (ICP)</p>
-                   <span className="flex items-center gap-1.5 text-emerald-600 text-xs font-bold"><span className="w-2 h-2 rounded-full bg-emerald-500 flex shrink-0" /> Ativo</span>
+                 <div className="flex justify-between items-start">
+                   <div>
+                     <p className="text-xs text-slate-800 font-bold">Triggers de Auditoria</p>
+                     <p className="text-[10px] text-slate-400 font-medium">Auto-Observer Hooks</p>
+                   </div>
+                   <span className="flex items-center gap-1.5 text-emerald-600 text-[10px] font-black uppercase"><span className="w-1.5 h-1.5 rounded-full bg-emerald-500" /> Ativo</span>
                  </div>
                </div>
             </div>
 
-            <div className="bg-slate-800 p-6 rounded-[0.625rem] shadow-lg border border-slate-700 text-white">
-               <h3 className="font-bold mb-3 flex items-center gap-2 text-sm uppercase tracking-wider">
-                 Garantia Imutável (WORM)
+            <div className="bg-[#1E3A8A] p-6 rounded-2xl shadow-xl border border-blue-800 text-white relative overflow-hidden group">
+               <div className="absolute -right-4 -bottom-4 opacity-10 group-hover:scale-110 transition-transform"><Shield size={100} /></div>
+               <h3 className="font-black mb-3 flex items-center gap-2 text-xs uppercase tracking-widest relative z-10">
+                 Garantia Imutável
                </h3>
-               <p className="text-xs text-slate-300 leading-relaxed font-medium">
-                 Todos os eventos registrados na tabela <code className="bg-slate-900 px-1 py-0.5 rounded text-blue-300">logs_auditoria</code> não podem ser apagados ou modificados, nem mesmo por contas Master, assegurando a transparência e conformidade com diretrizes estaduais e federais.
+               <p className="text-[11px] text-blue-100 leading-relaxed font-medium relative z-10">
+                 Os logs nesta trilha são protegidos por políticas RLS que impedem qualquer modificação posterior. O Vigia Saúde assegura transparência total em conformidade com as normas do Ministério da Saúde.
                </p>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+               <div className="bg-white p-4 rounded-xl border border-slate-100">
+                  <p className="text-[9px] font-black text-slate-400 uppercase mb-1">Alertas Críticos</p>
+                  <p className="text-xl font-black text-red-600">{stats.criticos}</p>
+               </div>
+               <div className="bg-white p-4 rounded-xl border border-slate-100">
+                  <p className="text-[9px] font-black text-slate-400 uppercase mb-1">Total Logs (Real)</p>
+                  <p className="text-xl font-black text-slate-800">{stats.total}</p>
+               </div>
             </div>
          </div>
 
          {/* LOGS DE AUDITORIA (TABELA PRINCIPAL) */}
-         <div className="xl:col-span-3 bg-white rounded-[0.625rem] shadow-sm border border-slate-100 overflow-hidden flex flex-col">
-            <div className="p-5 border-b border-slate-100 bg-slate-50/80 flex items-center justify-between">
-              <h3 className="font-bold text-slate-800 flex items-center gap-2">
+         <div className="xl:col-span-3 bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden flex flex-col min-h-[600px]">
+            <div className="p-6 border-b border-slate-100 bg-slate-50/50 flex items-center justify-between">
+              <h3 className="font-black text-slate-800 flex items-center gap-2 uppercase tracking-tight text-sm">
                 <History size={18} className="text-[#1E3A8A]" /> Trilha de Auditoria (Audit Trail)
               </h3>
-              <div className="flex gap-2">
+              <div className="flex gap-3">
                  <div className="relative">
                    <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-                   <input type="text" placeholder="Buscar ID de Transação..." className="pl-8 pr-3 py-1.5 bg-white border border-slate-200 rounded text-xs font-medium focus:ring-1 focus:ring-blue-500 outline-none w-64" />
+                   <input 
+                    type="text" 
+                    placeholder="Buscar ID, Ator ou Tabela..." 
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="pl-9 pr-4 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold focus:ring-2 focus:ring-blue-500 outline-none w-72 transition-all shadow-inner" 
+                   />
                  </div>
-                 <button className="p-1.5 bg-white border border-slate-200 rounded text-slate-500 hover:bg-slate-50"><Filter size={16} /></button>
+                 <button className="p-2 bg-white border border-slate-200 rounded-xl text-slate-500 hover:bg-slate-50 transition-colors"><Filter size={18} /></button>
               </div>
             </div>
 
             <div className="flex-1 overflow-x-auto">
               <table className="w-full text-left text-sm text-slate-600">
-                <thead className="bg-[#1E3A8A]/5 border-b border-slate-100 text-xs uppercase tracking-wider">
+                <thead className="bg-slate-50 border-b border-slate-100 text-[10px] font-black uppercase tracking-[0.25em] text-slate-400">
                   <tr>
-                    <th className="px-5 py-3 font-semibold text-slate-700">Timestamp / ID</th>
-                    <th className="px-5 py-3 font-semibold text-slate-700">Ator / Perfil</th>
-                    <th className="px-5 py-3 font-semibold text-slate-700">Ação e Recurso (Tabela)</th>
-                    <th className="px-5 py-3 font-semibold text-slate-700 text-center">Severidade</th>
+                    <th className="px-6 py-4">Timestamp / Transaction ID</th>
+                    <th className="px-6 py-4">Ator / Contexto</th>
+                    <th className="px-6 py-4">Ação e Recurso</th>
+                    <th className="px-6 py-4 text-center">Severidade</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                  {logs.map(log => (
-                    <tr key={log.id} className="hover:bg-slate-50/50 transition-colors">
-                      <td className="px-5 py-4">
-                        <p className="font-bold text-slate-800 text-[13px]">{format(new Date(log.timestamp), 'dd/MM/yyyy • HH:mm:ss')}</p>
-                        <p className="text-[10px] text-slate-400 font-mono mt-0.5">{log.id}</p>
+                  {loading ? (
+                    <tr>
+                      <td colSpan={4} className="px-6 py-20 text-center">
+                        <Loader2 className="animate-spin mx-auto text-blue-600 mb-2" size={32} />
+                        <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">Sincronizando Auditoria...</p>
                       </td>
-                      <td className="px-5 py-4">
-                        <p className="font-bold text-slate-700 text-xs">{log.ator}</p>
-                        <p className="text-[10px] bg-slate-100 text-slate-500 inline-flex px-1.5 py-0.5 rounded mt-1 font-semibold">{log.perfil}</p>
+                    </tr>
+                  ) : filteredLogs.length === 0 ? (
+                    <tr>
+                      <td colSpan={4} className="px-6 py-20 text-center opacity-40">
+                        <ShieldAlert className="mx-auto mb-2" size={40} />
+                        <p className="text-xs font-bold uppercase">Nenhum registro encontrado na trilha ativa</p>
                       </td>
-                      <td className="px-5 py-4 max-w-sm">
-                        <p className="font-bold text-slate-800 text-xs">{log.acao}</p>
-                        <p className="text-[10px] font-mono text-blue-600 mb-1">{log.recurso}</p>
-                        <p className="text-[11px] text-slate-500 font-medium leading-tight">{log.metadados}</p>
+                    </tr>
+                  ) : filteredLogs.map(log => (
+                    <tr key={log.id} className="hover:bg-slate-50/80 transition-all group">
+                      <td className="px-6 py-5">
+                        <p className="font-black text-slate-800 text-[12px]">{format(new Date(log.created_at), 'dd/MM/yyyy • HH:mm:ss')}</p>
+                        <p className="text-[10px] text-slate-400 font-mono mt-0.5 tracking-tighter uppercase">{log.id}</p>
                       </td>
-                      <td className="px-5 py-4 text-center">
-                        <span className={`inline-flex px-2.5 py-0.5 rounded text-[10px] font-bold uppercase tracking-widest border ${getSeveridadeStyle(log.severidade)}`}>
+                      <td className="px-6 py-5">
+                        <p className="font-black text-slate-700 text-xs">{log.ator}</p>
+                        <p className="text-[9px] bg-slate-100 text-slate-500 inline-flex px-2 py-0.5 rounded-full mt-1.5 font-bold uppercase tracking-wider">Identidade Verificada</p>
+                      </td>
+                      <td className="px-6 py-5 max-w-lg">
+                        <div className="flex items-center gap-2 mb-1.5">
+                           <span className={cn(
+                             "text-[10px] font-black px-1.5 py-0.5 rounded uppercase tracking-wider",
+                             log.acao === 'INSERT' ? 'bg-emerald-100 text-emerald-700' :
+                             log.acao === 'UPDATE' ? 'bg-blue-100 text-blue-700' :
+                             'bg-orange-100 text-orange-700'
+                           )}>
+                             {log.acao}
+                           </span>
+                           <span className="text-[10px] font-bold text-slate-400 font-mono tracking-tight">{log.tabela_afetada}</span>
+                        </div>
+                        
+                        <div className="flex flex-col gap-2 mt-3">
+                           {log.dados_anteriores && (
+                             <div className="p-3 bg-red-50/30 rounded-xl text-[10px] border border-red-100 group-hover:bg-red-50 transition-colors">
+                               <span className="font-black text-red-700 uppercase block mb-2 tracking-widest text-[9px]">ESTADO ANTERIOR:</span>
+                               <pre className="whitespace-pre-wrap text-red-600 font-mono leading-tight">{typeof log.dados_anteriores === 'string' ? log.dados_anteriores : JSON.stringify(log.dados_anteriores, null, 2)}</pre>
+                             </div>
+                           )}
+                           {log.dados_novos && (
+                             <div className="p-3 bg-emerald-50/30 rounded-xl text-[10px] border border-emerald-100 group-hover:bg-emerald-50 transition-colors">
+                               <span className="font-black text-emerald-700 uppercase block mb-2 tracking-widest text-[9px]">NOVO ESTADO (COMMIT):</span>
+                               <pre className="whitespace-pre-wrap text-emerald-600 font-mono leading-tight">{typeof log.dados_novos === 'string' ? log.dados_novos : JSON.stringify(log.dados_novos, null, 2)}</pre>
+                             </div>
+                           )}
+                           {!log.dados_anteriores && !log.dados_novos && log.metadados && (
+                             <p className="text-[11px] text-slate-500 font-bold leading-tight bg-slate-50 p-2 rounded-lg border border-slate-100">
+                               {typeof log.metadados === 'string' ? log.metadados : JSON.stringify(log.metadados)}
+                             </p>
+                           )}
+                        </div>
+                      </td>
+                      <td className="px-6 py-5 text-center">
+                        <span className={`inline-flex px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-[0.15em] border-2 shadow-sm ${getSeveridadeStyle(log.severidade)}`}>
                           {log.severidade}
                         </span>
                       </td>
@@ -142,11 +241,11 @@ export default function PainelAuditoriaMaster() {
               </table>
             </div>
 
-            <div className="p-4 border-t border-slate-100 bg-slate-50 text-xs text-slate-500 font-medium flex justify-between items-center">
-              <span>Mostrando 4 de 1.402 registros encriptados.</span>
-              <div className="flex gap-1">
-                <button className="px-2 py-1 bg-white border border-slate-200 rounded hover:bg-slate-50 disabled:opacity-50" disabled>Ant</button>
-                <button className="px-2 py-1 bg-white border border-slate-200 rounded hover:bg-slate-50">Próx</button>
+            <div className="p-6 border-t border-slate-100 bg-slate-50/50 text-[10px] font-black text-slate-400 uppercase tracking-widest flex justify-between items-center">
+              <span>Fim da trilha (Últimas 50 transações)</span>
+              <div className="flex gap-2">
+                <button className="px-4 py-2 bg-white border border-slate-200 rounded-xl hover:bg-slate-50 disabled:opacity-50 transition-all font-black text-slate-600 shadow-sm" disabled>Anterior</button>
+                <button className="px-4 py-2 bg-white border border-slate-200 rounded-xl hover:bg-slate-50 transition-all font-black text-slate-600 shadow-sm">Próxima</button>
               </div>
             </div>
          </div>
@@ -154,4 +253,9 @@ export default function PainelAuditoriaMaster() {
 
     </div>
   );
+}
+
+// Utility to merge classes
+function cn(...classes: string[]) {
+  return classes.filter(Boolean).join(' ');
 }

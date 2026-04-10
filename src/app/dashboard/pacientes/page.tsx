@@ -24,10 +24,7 @@ export default function ListaPacientes() {
   const [formEndereco, setFormEndereco] = useState('');
   const [formJanela, setFormJanela] = useState('Manhã (08h - 12h)');
   const [formTelefone, setFormTelefone] = useState('');
-
-  useEffect(() => {
-    loadPacientes();
-  }, []);
+  const [selectedPaciente, setSelectedPaciente] = useState<Paciente | null>(null);
 
   const loadPacientes = async () => {
     setLoading(true);
@@ -36,17 +33,15 @@ export default function ListaPacientes() {
       setPacientes(data);
     } catch (err) {
       console.error(err);
-      toast.error('Erro ao carregar pacientes');
+      toast.error("Erro ao carregar pacientes");
     } finally {
       setLoading(false);
     }
   };
 
-  const pacientesFiltrados = pacientes.filter(p => 
-    p.nome_completo.toLowerCase().includes(busca.toLowerCase()) || p.cpf.includes(busca)
-  );
-
-  const fecharDrawer = () => setDrawerPaciente(null);
+  useEffect(() => {
+    loadPacientes();
+  }, []);
 
   const resetForm = () => {
     setFormCpf('');
@@ -55,6 +50,13 @@ export default function ListaPacientes() {
     setFormJanela('Manhã (08h - 12h)');
     setFormTelefone('');
   };
+
+  const fecharDrawer = () => setDrawerPaciente(null);
+
+  const pacientesFiltrados = pacientes.filter(p => 
+    p.nome_completo.toLowerCase().includes(busca.toLowerCase()) ||
+    p.cpf.includes(busca)
+  );
 
   const salvarNovoPaciente = async (e: React.FormEvent) => {
     e.preventDefault();

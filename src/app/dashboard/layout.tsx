@@ -27,6 +27,9 @@ import { Separator } from '@/components/ui/separator';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
+import { NotificationCenter } from '@/components/NotificationCenter';
+import { RecallListener } from '@/components/RecallListener';
+
 
 const MENU_ITEMS = [
   { icon: BarChart3, label: 'Dashboard', href: '/dashboard' },
@@ -49,6 +52,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
   return (
     <div className="flex h-screen bg-slate-50 overflow-hidden">
+      <RecallListener />
+
       
       {/* SIDEBAR */}
       <aside
@@ -178,10 +183,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             </div>
           </div>
           <div className="flex items-center gap-4">
-            <Button variant="ghost" size="icon" className="relative text-slate-400">
-              <Bell size={20} />
-              <span className="absolute top-2 right-2 w-2 h-2 bg-red-500 rounded-full border-2 border-white"></span>
-            </Button>
+            <NotificationCenter />
             <div className="flex items-center gap-3 pl-4 border-l">
               <div className="text-right hidden sm:block">
                 <p className="text-xs font-black text-slate-800 leading-none">Luca Reis</p>

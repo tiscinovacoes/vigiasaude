@@ -110,35 +110,37 @@ function PacienteContent() {
 
         <TabsContent value="timeline">
            <Table>
-              <TableHeader>
-                 <TableRow className="bg-slate-50">
-                    <TableHead>ID Entrega</TableHead>
-                    <TableHead>Data Protocolo</TableHead>
-                    <TableHead>Motorista/Modal</TableHead>
-                    <TableHead>Lote (Batch ID)</TableHead>
-                    <TableHead>Status WORM</TableHead>
-                    <TableHead className="text-right">Comprovante</TableHead>
+              <TableHeader className="bg-slate-50">
+                 <TableRow>
+                    <TableHead>Protocolo</TableHead>
+                    <TableHead>Data</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead>Motorista</TableHead>
+                    <TableHead>Lote</TableHead>
+                    <TableHead className="text-right">Ação</TableHead>
                  </TableRow>
               </TableHeader>
               <TableBody>
                  {MOCK_PACIENTE.entregas.map((ent) => (
-                   <TableRow key={ent.id}>
-                      <TableCell className="font-mono font-bold text-slate-600">{ent.id}</TableCell>
-                      <TableCell className="text-slate-500 font-medium">{ent.data}</TableCell>
-                      <TableCell className="font-bold">{ent.motorista}</TableCell>
-                      <TableCell className="font-mono text-xs text-[#1E3A8A]">{ent.lote}</TableCell>
-                      <TableCell><Badge variant="outline" className="border-emerald-500 text-emerald-600">{ent.status}</Badge></TableCell>
-                      <TableCell className="text-right">
-                         <TooltipProvider>
-                           <Tooltip>
-                             <TooltipTrigger asChild>
-                               <Button variant="ghost" size="sm" className="text-blue-600"><FileBadge size={18}/></Button>
-                             </TooltipTrigger>
-                             <TooltipContent>Ver Assinatura Digital</TooltipContent>
-                           </Tooltip>
-                         </TooltipProvider>
-                      </TableCell>
-                   </TableRow>
+                    <TableRow key={ent.id}>
+                       <TableCell className="font-mono font-bold text-slate-600">{ent.id}</TableCell>
+                       <TableCell>{ent.data}</TableCell>
+                       <TableCell>
+                          <Badge variant="outline" className="bg-emerald-50 text-emerald-700 border-emerald-200">{ent.status}</Badge>
+                       </TableCell>
+                       <TableCell>{ent.motorista}</TableCell>
+                       <TableCell>{ent.lote}</TableCell>
+                       <TableCell className="text-right">
+                          <TooltipProvider>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <Button variant="ghost" size="sm" className="text-blue-600"><FileBadge size={18}/></Button>
+                              </TooltipTrigger>
+                              <TooltipContent>Ver Assinatura Digital</TooltipContent>
+                            </Tooltip>
+                          </TooltipProvider>
+                       </TableCell>
+                    </TableRow>
                  ))}
               </TableBody>
            </Table>
