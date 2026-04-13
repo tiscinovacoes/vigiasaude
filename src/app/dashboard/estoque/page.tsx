@@ -320,8 +320,8 @@ function EstoqueContent() {
 
       {/* Modal - Novo Medicamento */}
       {showNovoMedicamento && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[1001] p-4" onClick={() => setShowNovoMedicamento(false)}>
-          <Card className="w-full max-w-lg shadow-xl" onClick={e => e.stopPropagation()}>
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[1001] p-4" onClick={() => setShowNovoMedicamento(false)}>
+          <Card className="w-full max-w-lg shadow-2xl bg-white border-0" onClick={e => e.stopPropagation()}>
             <CardHeader className="border-b border-slate-100">
                <div className="flex items-center justify-between">
                   <CardTitle className="text-lg font-black text-slate-900 flex items-center gap-2">
@@ -359,8 +359,8 @@ function EstoqueContent() {
 
       {/* Modal - Nova Entrada */}
       {showNovaEntrada && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[1001] p-4" onClick={() => { setShowNovaEntrada(false); setValidacaoEntrada(null); }}>
-          <Card className="w-full max-w-lg shadow-xl" onClick={e => e.stopPropagation()}>
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[1001] p-4" onClick={() => { setShowNovaEntrada(false); setValidacaoEntrada(null); }}>
+          <Card className="w-full max-w-lg shadow-2xl bg-white border-0" onClick={e => e.stopPropagation()}>
             <CardHeader className="border-b border-slate-100">
                <div className="flex items-center justify-between">
                   <CardTitle className="text-lg font-black text-slate-900 flex items-center gap-2">
@@ -492,8 +492,8 @@ function EstoqueContent() {
 
       {/* Modal - Registrar Saída */}
       {showRegistrarSaida && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[1001] p-4" onClick={() => setShowRegistrarSaida(false)}>
-          <Card className="w-full max-w-lg shadow-xl" onClick={e => e.stopPropagation()}>
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[1001] p-4" onClick={() => setShowRegistrarSaida(false)}>
+          <Card className="w-full max-w-lg shadow-2xl bg-white border-0" onClick={e => e.stopPropagation()}>
             <CardHeader className="border-b border-slate-100">
                <div className="flex items-center justify-between">
                   <CardTitle className="text-lg font-black text-slate-900 flex items-center gap-2">
