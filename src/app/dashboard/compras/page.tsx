@@ -138,6 +138,7 @@ export default function ComprasPage() {
   const [fornecedores, setFornecedores] = useState<Fornecedor[]>([]);
   const [medicamentos, setMedicamentos] = useState<Medicamento[]>([]);
   const [loading, setLoading] = useState(true);
+  const [confirmandoId, setConfirmandoId] = useState<string | null>(null);
 
   // Modal state
   const [showModal, setShowModal] = useState(false);
@@ -173,6 +174,18 @@ export default function ComprasPage() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleConfirmarEntrega = async (compraId: string) => {
+    setConfirmandoId(compraId);
+    const res = await api.confirmarEntregaCompra(compraId);
+    if (res.success) {
+      toast.success(`Entrega confirmada! Lead time registrado: ${res.leadTimeDias} dias`);
+      fetchData();
+    } else {
+      toast.error('Erro ao confirmar entrega: ' + res.error);
+    }
+    setConfirmandoId(null);
   };
 
   // Alerta CMED automático nas compras existentes
@@ -303,6 +316,7 @@ export default function ComprasPage() {
                   <th className="text-right py-3 px-6 text-[#64748B] text-xs font-black tracking-wider uppercase">Valor Unit.</th>
                   <th className="text-right py-3 px-6 text-[#64748B] text-xs font-black tracking-wider uppercase">Teto CMED</th>
                   <th className="text-center py-3 px-6 text-[#64748B] text-xs font-black tracking-wider uppercase">Status</th>
+                  <th className="text-center py-3 px-6 text-[#64748B] text-xs font-black tracking-wider uppercase">Ações</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
@@ -354,12 +368,30 @@ export default function ComprasPage() {
                           {c.status}
                         </Badge>
                       </td>
+                      <td className="py-4 px-6 text-center">
+                        {c.status !== 'ENTREGUE' && c.status !== 'DESCARTADO' ? (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            disabled={confirmandoId === c.id}
+                            onClick={() => handleConfirmarEntrega(c.id)}
+                            className="text-xs font-bold border-emerald-300 text-emerald-700 hover:bg-emerald-50 rounded-lg"
+                          >
+                            {confirmandoId === c.id
+                              ? <Loader2 size={12} className="animate-spin" />
+                              : 'Confirmar Entrega'
+                            }
+                          </Button>
+                        ) : (
+                          <span className="text-xs text-slate-400">—</span>
+                        )}
+                      </td>
                     </tr>
                   );
                 })}
                 {compras.length === 0 && (
                   <tr>
-                    <td colSpan={8} className="py-12 text-center text-[#64748B]">
+                    <td colSpan={9} className="py-12 text-center text-[#64748B]">
                       Nenhuma compra registrada.
                     </td>
                   </tr>

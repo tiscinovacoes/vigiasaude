@@ -106,6 +106,7 @@ export type CompraRegistro = {
   motivo_sugestao: string | null;
   data_solicitacao: string | null;
   data_entrega_prevista: string | null;
+  data_entrega_real: string | null;
   medicamento?: { nome: string; preco_teto_cmed?: number };
   fornecedor?: { razao_social: string };
 };
@@ -494,12 +495,11 @@ export const api = {
     cnpj: string;
     razao_social: string;
     pontualidade_percentual?: number;
-    lead_time_medio?: number;
   }): Promise<{ success: boolean; data?: Fornecedor; error?: string }> {
     try {
       const { data, error } = await supabase
         .from('fornecedores')
-        .insert([fornecedor])
+        .insert([{ ...fornecedor, lead_time_medio: 0 }])
         .select()
         .single();
       if (error) throw error;
@@ -507,6 +507,73 @@ export const api = {
     } catch (err: any) {
       console.error('Erro ao criar fornecedor:', err);
       return { success: false, error: err?.message || 'Erro desconhecido' };
+    }
+  },
+
+  async confirmarEntregaCompra(compraId: string): Promise<{ success: boolean; leadTimeDias?: number; error?: string }> {
+    try {
+      // Busca a compra para obter data_solicitacao e fornecedor_id
+      const { data: compra, error: errC } = await supabase
+        .from('compras_registro')
+        .select('data_solicitacao, data_entrega_prevista, fornecedor_id')
+        .eq('id', compraId)
+        .single();
+      if (errC || !compra) throw errC ?? new Error('Compra não encontrada');
+
+      const hoje = new Date().toISOString().split('T')[0];
+
+      // Calcula lead time real em dias
+      const msPerDia = 1000 * 60 * 60 * 24;
+      const leadTimeDias = compra.data_solicitacao
+        ? Math.round((Date.now() - new Date(compra.data_solicitacao).getTime()) / msPerDia)
+        : 0;
+
+      // Marca entrega
+      const { error: errU } = await supabase
+        .from('compras_registro')
+        .update({ status: 'ENTREGUE', data_entrega_real: hoje })
+        .eq('id', compraId);
+      if (errU) throw errU;
+
+      // Recalcula lead_time_medio e pontualidade do fornecedor
+      const { data: historico } = await supabase
+        .from('compras_registro')
+        .select('data_solicitacao, data_entrega_real, data_entrega_prevista')
+        .eq('fornecedor_id', compra.fornecedor_id)
+        .eq('status', 'ENTREGUE')
+        .not('data_entrega_real', 'is', null)
+        .not('data_solicitacao', 'is', null);
+
+      if (historico && historico.length > 0) {
+        const totalDias = historico.reduce((acc, h) => {
+          const dias = Math.round((new Date(h.data_entrega_real!).getTime() - new Date(h.data_solicitacao!).getTime()) / msPerDia);
+          return acc + dias;
+        }, 0);
+        const novoLeadTime = Math.round(totalDias / historico.length);
+
+        // Pontualidade: % de entregas que chegaram até a data prevista
+        const novas = historico.filter(h =>
+          h.data_entrega_prevista &&
+          new Date(h.data_entrega_real!) <= new Date(h.data_entrega_prevista)
+        );
+        const novaPontualidade = Math.round((novas.length / historico.length) * 100);
+
+        await supabase
+          .from('fornecedores')
+          .update({ lead_time_medio: novoLeadTime, pontualidade_percentual: novaPontualidade })
+          .eq('id', compra.fornecedor_id);
+      }
+
+      await auditoriaAPI.log('UPDATE', 'compras_registro', {
+        compra_id: compraId,
+        data_entrega_real: hoje,
+        lead_time_calculado_dias: leadTimeDias,
+      });
+
+      return { success: true, leadTimeDias };
+    } catch (err: any) {
+      console.error('❌ [API Error] confirmarEntregaCompra:', err);
+      return { success: false, error: err.message };
     }
   },
 

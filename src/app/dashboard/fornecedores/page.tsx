@@ -46,7 +46,6 @@ export default function FornecedoresPage() {
   // Form State
   const [formCnpj, setFormCnpj] = useState('');
   const [formRazaoSocial, setFormRazaoSocial] = useState('');
-  const [formLeadTime, setFormLeadTime] = useState('');
 
   useEffect(() => {
     loadFornecedores();
@@ -86,7 +85,6 @@ export default function FornecedoresPage() {
   const resetForm = () => {
     setFormCnpj('');
     setFormRazaoSocial('');
-    setFormLeadTime('');
   };
 
   const salvarNovoFornecedor = async (e: React.FormEvent) => {
@@ -96,7 +94,6 @@ export default function FornecedoresPage() {
     const result = await api.createFornecedor({
       cnpj: formCnpj,
       razao_social: formRazaoSocial,
-      lead_time_medio: formLeadTime ? parseInt(formLeadTime) : undefined,
     });
 
     if (result.success && result.data) {
@@ -267,7 +264,9 @@ export default function FornecedoresPage() {
                       <div className="space-y-3">
                         <div className="flex items-center gap-2 text-slate-500">
                           <Clock size={16} className="shrink-0" />
-                          <span className="text-xs font-bold">Lead Time: {fornecedor.lead_time_medio} dias</span>
+                          <span className="text-xs font-bold">
+                            Lead Time: {fornecedor.lead_time_medio > 0 ? `${fornecedor.lead_time_medio} dias` : 'Aguardando pedidos'}
+                          </span>
                         </div>
                         <div className="flex items-center gap-2 text-slate-500">
                           <TrendingUp size={16} className="shrink-0" />
@@ -332,16 +331,9 @@ export default function FornecedoresPage() {
                   required
                 />
               </div>
-              <div>
-                <label className="text-sm font-semibold text-slate-700 block mb-1.5">Lead Time Médio (dias)</label>
-                <input 
-                  type="number" 
-                  placeholder="Ex: 7" 
-                  value={formLeadTime}
-                  onChange={(e) => setFormLeadTime(e.target.value)}
-                  className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500" 
-                />
-              </div>
+              <p className="text-xs text-slate-400 bg-slate-50 rounded-lg px-3 py-2 border border-slate-100">
+                O lead time será calculado automaticamente com base no histórico de pedidos de compra entregues.
+              </p>
               <div className="pt-4 flex justify-end gap-3">
                 <button type="button" onClick={() => { setIsNewModalOpen(false); resetForm(); }} className="px-5 py-2.5 text-sm font-semibold text-slate-600 bg-white border border-slate-200 rounded-lg hover:bg-slate-50">Cancelar</button>
                 <button 
