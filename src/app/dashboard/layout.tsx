@@ -1,13 +1,13 @@
 'use client';
 
 import { useState } from 'react';
-import { 
-  BarChart3, 
-  Package, 
-  Users, 
-  Truck, 
-  ShieldAlert, 
-  FileText, 
+import {
+  BarChart3,
+  Package,
+  Users,
+  Truck,
+  ShieldAlert,
+  FileText,
   LogOut,
   Settings,
   Bell,
@@ -19,7 +19,9 @@ import {
   PackageCheck,
   Building2,
   Timer,
-  ShieldCheck
+  ShieldCheck,
+  BadgeDollarSign,
+  DatabaseZap,
 } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
@@ -42,6 +44,8 @@ const MENU_ITEMS = [
   { icon: Timer, label: 'Lead Time', href: '/dashboard/lead-time' },
   { icon: ShieldAlert, label: 'Motor de Recall', href: '/dashboard/recall' },
   { icon: ShieldCheck, label: 'Auditoria Master', href: '/dashboard/auditoria' },
+  { icon: BadgeDollarSign, label: 'Conformidade CMED', href: '/dashboard/cmed' },
+  { icon: DatabaseZap, label: 'Banco de Preços BPS', href: '/dashboard/bps' },
   { icon: FileText, label: 'Relatórios', href: '/dashboard/relatorios' },
 ];
 

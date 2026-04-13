@@ -1,9 +1,9 @@
 'use client';
 
-import { Suspense, useState, useEffect, Fragment } from 'react';
-import { 
-  ArrowLeft, 
-  AlertTriangle, 
+import { Suspense, useState, useEffect, Fragment, useCallback } from 'react';
+import {
+  ArrowLeft,
+  AlertTriangle,
   Plus,
   ArrowDownToLine,
   Search,
@@ -16,7 +16,12 @@ import {
   Layers,
   Calendar,
   CheckCircle,
-  Truck
+  Truck,
+  ShieldCheck,
+  ShieldX,
+  ShieldAlert,
+  CheckCircle2,
+  Info,
 } from 'lucide-react';
 import { 
   Table, 
@@ -40,6 +45,13 @@ import { Input } from '@/components/ui/input';
 import { api, Medicamento, Lote } from '@/lib/api';
 import { useRouter } from 'next/navigation';
 import { toast } from "sonner";
+import { cn } from '@/lib/utils';
+
+type ValidacaoPreco = {
+  cmed: { valido: boolean; teto: number; percentual: number };
+  bps: { valido: boolean | null; referencia: number | null; percentual: number | null };
+  status: 'OK' | 'ALERTA_BPS' | 'BLOQUEIO_CMED';
+} | null;
 
 function EstoqueContent() {
   const router = useRouter();
@@ -49,19 +61,37 @@ function EstoqueContent() {
   const [expandedMeds, setExpandedMeds] = useState<Set<string>>(new Set());
   
   // Modais
+  const [showNovoMedicamento, setShowNovoMedicamento] = useState(false);
   const [showNovaEntrada, setShowNovaEntrada] = useState(false);
   const [showRegistrarSaida, setShowRegistrarSaida] = useState(false);
   
   // States para Formulários
+  const [formMedicamento, setFormMedicamento] = useState({
+    nome: '', dosagem: '', estoque_minimo: '', preco_teto_cmed: ''
+  });
   const [formEntrada, setFormEntrada] = useState({
     med_id: '', lote: '', validade: '', qtd: '', preco: ''
   });
   const [formSaida, setFormSaida] = useState({
     lote_id: '', qtd: '', motivo: 'Dispensão Manual', destino: ''
   });
+  const [validacaoEntrada, setValidacaoEntrada] = useState<ValidacaoPreco>(null);
+  const [validando, setValidando] = useState(false);
 
   useEffect(() => {
     loadData();
+  }, []);
+
+  const validarPrecoEntrada = useCallback(async (medId: string, preco: string) => {
+    const v = parseFloat(preco.replace(',', '.'));
+    if (!medId || !v || v <= 0) { setValidacaoEntrada(null); return; }
+    setValidando(true);
+    try {
+      const resultado = await api.validarPrecoCompleto(medId, v);
+      setValidacaoEntrada(resultado);
+    } finally {
+      setValidando(false);
+    }
   }, []);
 
   async function loadData() {
@@ -83,9 +113,31 @@ function EstoqueContent() {
     setExpandedMeds(next);
   };
 
-  const filtered = medicamentos.filter(m => 
-    m.nome.toLowerCase().includes(busca.toLowerCase()) || m.codigo.includes(busca)
+  const filtered = medicamentos.filter(m =>
+    m.nome.toLowerCase().includes(busca.toLowerCase())
   );
+
+  async function handleNovoMedicamento() {
+    if (!formMedicamento.nome || !formMedicamento.estoque_minimo || !formMedicamento.preco_teto_cmed) {
+      toast.error("Preencha os campos obrigatórios (Nome, Mínimo e Preço Teto)");
+      return;
+    }
+    const res = await api.createMedicamento({
+      nome: formMedicamento.nome,
+      dosagem: formMedicamento.dosagem || undefined,
+      estoque_minimo: Number(formMedicamento.estoque_minimo),
+      preco_teto_cmed: Number(formMedicamento.preco_teto_cmed)
+    });
+
+    if (res.success) {
+      toast.success("Medicamento cadastrado com sucesso!");
+      setShowNovoMedicamento(false);
+      setFormMedicamento({ nome: '', dosagem: '', estoque_minimo: '', preco_teto_cmed: '' });
+      loadData();
+    } else {
+      toast.error("Erro ao cadastrar: " + res.error);
+    }
+  }
 
   async function handleEntrada() {
     if (!formEntrada.med_id || !formEntrada.lote || !formEntrada.qtd || !formEntrada.preco) {
@@ -137,7 +189,14 @@ function EstoqueContent() {
           <h1 className="text-2xl font-black text-slate-900">Gestão de Estoque Tático</h1>
           <p className="text-slate-500 text-sm font-medium">Controle FEFO e conformidade financeira CMED</p>
         </div>
-        <div className="flex gap-3">
+        <div className="flex gap-3 flex-wrap justify-end">
+          <Button 
+            onClick={() => setShowNovoMedicamento(true)}
+            className="bg-[#1A2B6D] hover:bg-[#121f4f] text-white font-black h-11 px-6 rounded-xl shadow-lg"
+          >
+            <Plus className="w-5 h-5 mr-2" />
+            Novo Medicamento
+          </Button>
           <Button 
             onClick={() => setShowNovaEntrada(true)}
             className="bg-emerald-600 hover:bg-emerald-700 text-white font-black h-11 px-6 rounded-xl shadow-lg shadow-emerald-100"
@@ -205,7 +264,7 @@ function EstoqueContent() {
                           </td>
                           <td className="py-4 px-4">
                             <p className="font-bold text-slate-900 leading-tight">{med.nome}</p>
-                            <p className="text-[10px] font-mono text-slate-400 mt-0.5">{med.codigo} | {med.dosagem}</p>
+                            <p className="text-[10px] font-mono text-slate-400 mt-0.5">{med.dosagem || '—'}</p>
                           </td>
                           <td className="py-4 px-4 text-right">
                              <div className="flex flex-col items-end">
@@ -259,22 +318,64 @@ function EstoqueContent() {
         </CardContent>
       </Card>
 
+      {/* Modal - Novo Medicamento */}
+      {showNovoMedicamento && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[1001] p-4" onClick={() => setShowNovoMedicamento(false)}>
+          <Card className="w-full max-w-lg shadow-xl" onClick={e => e.stopPropagation()}>
+            <CardHeader className="border-b border-slate-100">
+               <div className="flex items-center justify-between">
+                  <CardTitle className="text-lg font-black text-slate-900 flex items-center gap-2">
+                     <Plus className="text-[#1A2B6D]"/> NOVO MEDICAMENTO
+                  </CardTitle>
+                  <button onClick={() => setShowNovoMedicamento(false)} className="text-slate-300 hover:text-slate-600 transition-colors"><X size={24}/></button>
+               </div>
+            </CardHeader>
+            <CardContent className="p-6 space-y-4">
+               <div>
+                  <label className="text-[10px] font-black text-slate-400 uppercase mb-1.5 block">Nome do Medicamento *</label>
+                  <Input placeholder="Ex: Paracetamol 500mg" value={formMedicamento.nome} onChange={e => setFormMedicamento({...formMedicamento, nome: e.target.value})} />
+               </div>
+               <div>
+                  <label className="text-[10px] font-black text-slate-400 uppercase mb-1.5 block">Dosagem</label>
+                  <Input placeholder="Ex: 500mg" value={formMedicamento.dosagem} onChange={e => setFormMedicamento({...formMedicamento, dosagem: e.target.value})} />
+               </div>
+               <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="text-[10px] font-black text-slate-400 uppercase mb-1.5 block">Estoque Mínimo *</label>
+                    <Input type="number" placeholder="Ex: 100" value={formMedicamento.estoque_minimo} onChange={e => setFormMedicamento({...formMedicamento, estoque_minimo: e.target.value})} />
+                  </div>
+                  <div>
+                    <label className="text-[10px] font-black text-slate-400 uppercase mb-1.5 block">Preço Teto CMED (R$) *</label>
+                    <Input type="number" step="0.01" placeholder="0.00" value={formMedicamento.preco_teto_cmed} onChange={e => setFormMedicamento({...formMedicamento, preco_teto_cmed: e.target.value})} />
+                  </div>
+               </div>
+               <Button onClick={handleNovoMedicamento} className="w-full bg-[#1A2B6D] hover:bg-[#121f4f] text-white font-black h-12 rounded-xl mt-4">
+                  Salvar Medicamento
+               </Button>
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
       {/* Modal - Nova Entrada */}
       {showNovaEntrada && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[1001] p-4" onClick={() => setShowNovaEntrada(false)}>
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[1001] p-4" onClick={() => { setShowNovaEntrada(false); setValidacaoEntrada(null); }}>
           <Card className="w-full max-w-lg shadow-xl" onClick={e => e.stopPropagation()}>
             <CardHeader className="border-b border-slate-100">
                <div className="flex items-center justify-between">
                   <CardTitle className="text-lg font-black text-slate-900 flex items-center gap-2">
                      <Plus className="text-emerald-600"/> NOVA ENTRADA (ESTOQUE)
                   </CardTitle>
-                  <button onClick={() => setShowNovaEntrada(false)} className="text-slate-300 hover:text-slate-600 transition-colors"><X size={24}/></button>
+                  <button onClick={() => { setShowNovaEntrada(false); setValidacaoEntrada(null); }} className="text-slate-300 hover:text-slate-600 transition-colors"><X size={24}/></button>
                </div>
             </CardHeader>
             <CardContent className="p-6 space-y-4">
                <div>
                   <label className="text-[10px] font-black text-slate-400 uppercase mb-1.5 block">Medicamento Alvo</label>
-                  <Select onValueChange={v => setFormEntrada({...formEntrada, med_id: v})}>
+                  <Select onValueChange={v => {
+                    setFormEntrada({...formEntrada, med_id: v});
+                    if (formEntrada.preco) validarPrecoEntrada(v, formEntrada.preco);
+                  }}>
                     <SelectTrigger><SelectValue placeholder="Selecione..." /></SelectTrigger>
                     <SelectContent>
                       {medicamentos.map(m => <SelectItem key={m.id} value={m.id}>{m.nome}</SelectItem>)}
@@ -297,12 +398,92 @@ function EstoqueContent() {
                     <Input type="number" placeholder="0" onChange={e => setFormEntrada({...formEntrada, qtd: e.target.value})} />
                   </div>
                   <div>
-                    <label className="text-[10px] font-black text-slate-400 uppercase mb-1.5 block">Custo Unitário (R$)</label>
-                    <Input type="number" step="0.01" placeholder="0.00" onChange={e => setFormEntrada({...formEntrada, preco: e.target.value})} />
+                    <label className="text-[10px] font-black text-slate-400 uppercase mb-1.5 block flex items-center gap-1">
+                      Custo Unitário (R$)
+                      {validando && <Loader2 size={10} className="animate-spin" />}
+                    </label>
+                    <Input
+                      type="number"
+                      step="0.01"
+                      placeholder="0.00"
+                      className={cn(
+                        validacaoEntrada?.status === 'BLOQUEIO_CMED' && 'border-red-400 focus-visible:ring-red-400',
+                        validacaoEntrada?.status === 'ALERTA_BPS' && 'border-amber-400 focus-visible:ring-amber-400',
+                        validacaoEntrada?.status === 'OK' && 'border-emerald-400 focus-visible:ring-emerald-400',
+                      )}
+                      onChange={e => {
+                        setFormEntrada({...formEntrada, preco: e.target.value});
+                        validarPrecoEntrada(formEntrada.med_id, e.target.value);
+                      }}
+                    />
                   </div>
                </div>
-               <Button onClick={handleEntrada} className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-black h-12 rounded-xl mt-4">
-                  Processar Entrada tática
+
+               {/* Painel de conformidade */}
+               {validacaoEntrada && parseFloat(formEntrada.preco) > 0 && (
+                 <div className="space-y-2">
+                   <div className={cn(
+                     'flex items-start gap-3 rounded-xl p-3 border',
+                     validacaoEntrada.cmed.valido ? 'bg-emerald-50 border-emerald-200' : 'bg-red-50 border-red-300'
+                   )}>
+                     {validacaoEntrada.cmed.valido
+                       ? <ShieldCheck className="text-emerald-600 shrink-0 mt-0.5" size={15} />
+                       : <ShieldX className="text-red-600 shrink-0 mt-0.5 animate-pulse" size={15} />
+                     }
+                     <div className="flex-1">
+                       <p className={cn('text-[10px] font-black uppercase', validacaoEntrada.cmed.valido ? 'text-emerald-700' : 'text-red-700')}>
+                         CMED / ANVISA
+                       </p>
+                       <p className={cn('text-xs font-medium', validacaoEntrada.cmed.valido ? 'text-emerald-700' : 'text-red-700 font-bold')}>
+                         {validacaoEntrada.cmed.valido
+                           ? `Dentro do teto — R$ ${validacaoEntrada.cmed.teto.toFixed(2)}`
+                           : `+${validacaoEntrada.cmed.percentual.toFixed(1)}% acima (teto: R$ ${validacaoEntrada.cmed.teto.toFixed(2)})`
+                         }
+                       </p>
+                     </div>
+                   </div>
+                   {validacaoEntrada.bps.referencia !== null && (
+                     <div className={cn(
+                       'flex items-start gap-3 rounded-xl p-3 border',
+                       validacaoEntrada.bps.valido ? 'bg-emerald-50 border-emerald-200' : 'bg-amber-50 border-amber-200'
+                     )}>
+                       {validacaoEntrada.bps.valido
+                         ? <CheckCircle2 className="text-emerald-600 shrink-0 mt-0.5" size={15} />
+                         : <ShieldAlert className="text-amber-600 shrink-0 mt-0.5" size={15} />
+                       }
+                       <div className="flex-1">
+                         <p className={cn('text-[10px] font-black uppercase', validacaoEntrada.bps.valido ? 'text-emerald-700' : 'text-amber-700')}>
+                           BPS / Ministério da Saúde
+                         </p>
+                         <p className={cn('text-xs font-medium', validacaoEntrada.bps.valido ? 'text-emerald-700' : 'text-amber-700 font-bold')}>
+                           {validacaoEntrada.bps.valido
+                             ? `Abaixo da referência — R$ ${validacaoEntrada.bps.referencia!.toFixed(2)}`
+                             : `+${validacaoEntrada.bps.percentual!.toFixed(1)}% acima da ref. BPS (R$ ${validacaoEntrada.bps.referencia!.toFixed(2)})`
+                           }
+                         </p>
+                       </div>
+                     </div>
+                   )}
+                 </div>
+               )}
+
+               <Button
+                 onClick={handleEntrada}
+                 className={cn(
+                   'w-full font-black h-12 rounded-xl mt-4 text-white',
+                   validacaoEntrada?.status === 'BLOQUEIO_CMED'
+                     ? 'bg-red-600 hover:bg-red-700'
+                     : validacaoEntrada?.status === 'ALERTA_BPS'
+                     ? 'bg-amber-600 hover:bg-amber-700'
+                     : 'bg-emerald-600 hover:bg-emerald-700'
+                 )}
+               >
+                 {validacaoEntrada?.status === 'BLOQUEIO_CMED'
+                   ? 'Registrar Entrada (acima do teto CMED!)'
+                   : validacaoEntrada?.status === 'ALERTA_BPS'
+                   ? 'Registrar Entrada (acima do BPS)'
+                   : 'Processar Entrada Tática'
+                 }
                </Button>
             </CardContent>
           </Card>

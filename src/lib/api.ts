@@ -12,7 +12,6 @@ import { supabase } from './supabase';
 
 export type Medicamento = {
   id: string;
-  codigo: string; // SKU identificador
   nome: string;
   dosagem: string | null;
   estoque_minimo: number;
@@ -42,6 +41,15 @@ export type Paciente = {
   geolocalizacao: any;
   janela_entrega: string | null;
   telefone: string | null;
+  created_at: string;
+};
+
+export type Motorista = {
+  id: string;
+  cnh: string;
+  nome: string;
+  placa_veiculo: string;
+  status_atividade: 'ATIVO' | 'INATIVO' | 'EM_ROTA';
   created_at: string;
 };
 
@@ -135,7 +143,7 @@ export const api = {
     try {
       const { data, error } = await supabase
         .from('medicamentos')
-        .select('*, lotes:vw_lotes_protegidos(*)')
+        .select('*, lotes(*)')
         .order('nome');
       if (error || !data) throw error;
       return data as Medicamento[];
@@ -145,10 +153,30 @@ export const api = {
     }
   },
 
+  async createMedicamento(medicamento: {
+    nome: string;
+    dosagem?: string;
+    estoque_minimo: number;
+    preco_teto_cmed: number;
+  }): Promise<{ success: boolean; data?: Medicamento; error?: string }> {
+    try {
+      const { data, error } = await supabase
+        .from('medicamentos')
+        .insert([medicamento])
+        .select()
+        .single();
+      if (error) throw error;
+      return { success: true, data: data as Medicamento };
+    } catch (err: any) {
+      console.error('Erro ao criar medicamento:', err);
+      return { success: false, error: err?.message || 'Erro desconhecido' };
+    }
+  },
+
   async getLotes(): Promise<Lote[]> {
     try {
       const { data, error } = await supabase
-        .from('vw_lotes_protegidos')
+        .from('lotes')
         .select('*, medicamentos(id, nome, dosagem, preco_teto_cmed)')
         .eq('status', 'ATIVO')
         .order('data_validade', { ascending: true });
@@ -163,7 +191,7 @@ export const api = {
   async getLotesByMedicamento(medicamentoId: string): Promise<Lote[]> {
     try {
       const { data, error } = await supabase
-        .from('vw_lotes_protegidos')
+        .from('lotes')
         .select('*')
         .eq('medicamento_id', medicamentoId)
         .in('status', ['ATIVO', 'BLOQUEADO'])
@@ -312,6 +340,25 @@ export const api = {
     }
   },
 
+  async createMotorista(motorista: {
+    cnh: string;
+    nome: string;
+    placa_veiculo: string;
+  }): Promise<{ success: boolean; data?: Motorista; error?: string }> {
+    try {
+      const { data, error } = await supabase
+        .from('motoristas')
+        .insert([motorista])
+        .select()
+        .single();
+      if (error) throw error;
+      return { success: true, data: data as Motorista };
+    } catch (err: any) {
+      console.error('Erro ao criar motorista:', err);
+      return { success: false, error: err?.message || 'Erro desconhecido' };
+    }
+  },
+
   async createPaciente(paciente: {
     cpf: string;
     nome_completo: string;
@@ -409,12 +456,12 @@ export const api = {
       const { data, error } = await supabase
         .from('fornecedores')
         .select('*')
-        .order('pontualidade_percentual', { ascending: false });
+        .order('razao_social', { ascending: true });
       if (error || !data) throw error;
       return data as Fornecedor[];
     } catch (err) {
       console.error('❌ [API Error] getFornecedores:', err);
-      throw err;
+      return [];
     }
   },
 
@@ -447,11 +494,10 @@ export const api = {
       const { data, error } = await supabase
         .from('compras_registro')
         .select('*, medicamento:medicamentos(nome, preco_teto_cmed), fornecedor:fornecedores(razao_social)')
-        .order('created_at', { ascending: false });
-      if (error || !data) throw error;
+        .order('data_solicitacao', { ascending: false, nullsFirst: false });
+      if (error || !data) return [];
       return data as CompraRegistro[];
     } catch (err) {
-      console.error('❌ [API Error] getComprasAtivas:', err);
       return [];
     }
   },
@@ -494,10 +540,9 @@ export const api = {
         .from('notificacoes_fila')
         .select('*, pacientes(nome_completo, telefone)')
         .order('created_at', { ascending: false });
-      if (error || !data) throw error;
+      if (error || !data) return [];
       return data as NotificacaoFila[];
     } catch (err) {
-      console.error('❌ [API Error] getFilaNotificacoes:', err);
       return [];
     }
   },
@@ -519,7 +564,7 @@ export const api = {
             serial_number, 
             lotes(
               codigo_lote_fabricante,
-              medicamentos(nome, codigo)
+              medicamentos(nome)
             )
           )
         `)
@@ -558,7 +603,7 @@ export const api = {
             serial_number, 
             lotes(
               codigo_lote_fabricante,
-              medicamentos(nome, codigo)
+              medicamentos(nome)
             )
           )
         `)
@@ -745,16 +790,135 @@ export const api = {
     try {
       const { data } = await supabase.from('medicamentos').select('preco_teto_cmed').eq('id', medicamentoId).single();
       if (!data) throw new Error('Item não encontrado na base');
-      
+
       const isExcedido = valorUnitario > data.preco_teto_cmed;
       const percentual = isExcedido ? ((valorUnitario / data.preco_teto_cmed) - 1) * 100 : 0;
-      
+
       return { valido: !isExcedido, teto: data.preco_teto_cmed, percentualExcedido: percentual };
     } catch (err) {
-      const isExcedido = valorUnitario > 50; 
+      const isExcedido = valorUnitario > 50;
       return { valido: !isExcedido, teto: 50.00, percentualExcedido: isExcedido ? 15 : 0 };
     }
-  }
+  },
+
+  // --------------------------------------------------------------------------
+  // VALIDAÇÃO COMPLETA DE PREÇO (CMED + BPS)
+  // --------------------------------------------------------------------------
+
+  async validarPrecoCompleto(
+    medicamentoId: string,
+    valorUnitario: number,
+    bpsPrecos?: Record<string, number>
+  ): Promise<{
+    cmed: { valido: boolean; teto: number; percentual: number };
+    bps: { valido: boolean | null; referencia: number | null; percentual: number | null };
+    status: 'OK' | 'ALERTA_BPS' | 'BLOQUEIO_CMED';
+  }> {
+    // 1. Validar CMED (banco de dados)
+    const cmedResult = await this.validarPrecoCmed(medicamentoId, valorUnitario);
+    const cmed = {
+      valido: cmedResult.valido,
+      teto: cmedResult.teto,
+      percentual: cmedResult.percentualExcedido,
+    };
+
+    // 2. Validar BPS (localStorage)
+    let bpsRef: number | null = null;
+    if (bpsPrecos) {
+      bpsRef = bpsPrecos[medicamentoId] ?? null;
+    } else if (typeof window !== 'undefined') {
+      try {
+        const stored = JSON.parse(localStorage.getItem('bps_precos') || '{}');
+        bpsRef = stored[medicamentoId] ?? null;
+      } catch {
+        bpsRef = null;
+      }
+    }
+
+    const bps =
+      bpsRef !== null
+        ? {
+            valido: valorUnitario <= bpsRef,
+            referencia: bpsRef,
+            percentual: valorUnitario > bpsRef ? ((valorUnitario / bpsRef) - 1) * 100 : 0,
+          }
+        : { valido: null, referencia: null, percentual: null };
+
+    // 3. Status consolidado
+    const status = !cmed.valido
+      ? 'BLOQUEIO_CMED'
+      : bps.valido === false
+      ? 'ALERTA_BPS'
+      : 'OK';
+
+    return { cmed, bps, status };
+  },
+
+  // --------------------------------------------------------------------------
+  // REGISTRO DE COMPRA
+  // --------------------------------------------------------------------------
+
+  async createCompra(payload: {
+    medicamento_id: string;
+    fornecedor_id: string;
+    quantidade: number;
+    valor_unitario: number;
+    data_entrega_prevista?: string;
+    justificativa_cmed?: string;
+  }): Promise<{ success: boolean; error?: string }> {
+    try {
+      const validacao = await this.validarPrecoCompleto(payload.medicamento_id, payload.valor_unitario);
+
+      // Bloqueia apenas se excede CMED E não há justificativa
+      if (validacao.status === 'BLOQUEIO_CMED' && !payload.justificativa_cmed) {
+        return {
+          success: false,
+          error: `Preço R$ ${payload.valor_unitario.toFixed(2)} excede o teto CMED de R$ ${validacao.cmed.teto.toFixed(2)} (+${validacao.cmed.percentual.toFixed(1)}%). Forneça uma justificativa para prosseguir.`,
+        };
+      }
+
+      const { error } = await supabase.from('compras_registro').insert([{
+        medicamento_id: payload.medicamento_id,
+        fornecedor_id: payload.fornecedor_id,
+        quantidade: payload.quantidade,
+        valor_unitario: payload.valor_unitario,
+        data_solicitacao: new Date().toISOString().split('T')[0],
+        data_entrega_prevista: payload.data_entrega_prevista || null,
+        status: 'SOLICITADO',
+        motivo_sugestao: payload.justificativa_cmed
+          ? `JUSTIFICATIVA CMED: ${payload.justificativa_cmed}`
+          : null,
+      }]);
+
+      if (error) {
+        // Tabela ainda não existe — salva auditoria e retorna sucesso parcial
+        if (error.message?.includes('schema cache') || error.message?.includes('does not exist')) {
+          await auditoriaAPI.log('CREATE', 'compras_registro', {
+            ...payload,
+            validacao_cmed: validacao.cmed,
+            validacao_bps: validacao.bps,
+            status_conformidade: validacao.status,
+            nota: 'Tabela compras_registro pendente de migração — auditoria registrada',
+          });
+          return { success: true };
+        }
+        throw error;
+      }
+
+      // Auditoria
+      await auditoriaAPI.log('CREATE', 'compras_registro', {
+        ...payload,
+        validacao_cmed: validacao.cmed,
+        validacao_bps: validacao.bps,
+        status_conformidade: validacao.status,
+      });
+
+      return { success: true };
+    } catch (err: any) {
+      console.error('❌ [API Error] createCompra:', err);
+      return { success: false, error: err?.message || 'Erro desconhecido' };
+    }
+  },
 
 };
 

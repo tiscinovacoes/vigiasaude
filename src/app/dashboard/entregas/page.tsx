@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { 
   Calendar as CalendarIcon, Truck, MapPin, ScanBarcode, 
   CheckCircle2, AlertTriangle, ChevronDown, ChevronUp,
-  Clock, FileCheck, X, Loader2, RefreshCw, Route,
+  Clock, FileCheck, X, Loader2, RefreshCw, Route, Plus,
   Package, CheckCircle, Hash, Fingerprint, Link2,
   User, FileText, Camera, ShieldAlert, ScanLine, CheckSquare, AlertCircle
 } from 'lucide-react';
@@ -12,6 +12,7 @@ import { api, type EntregaLogistica } from '@/lib/api';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { Input } from '@/components/ui/input';
 import { toast } from 'sonner';
 
 
@@ -34,9 +35,34 @@ export default function EntregasLogistica() {
   const [alertaAberto, setAlertaAberto] = useState(false);
   const [entregaSelecionada, setEntregaSelecionada] = useState<EntregaLogistica | null>(null);
 
+  const [showNovoMotorista, setShowNovoMotorista] = useState(false);
+  const [formMotorista, setFormMotorista] = useState({
+    nome: '', cnh: '', placa_veiculo: ''
+  });
+
   useEffect(() => {
     loadEntregas();
   }, []);
+
+  const handleNovoMotorista = async () => {
+    if (!formMotorista.nome || !formMotorista.cnh || !formMotorista.placa_veiculo) {
+      toast.error("Preencha todos os campos obrigatórios");
+      return;
+    }
+    const res = await api.createMotorista({
+      nome: formMotorista.nome,
+      cnh: formMotorista.cnh,
+      placa_veiculo: formMotorista.placa_veiculo
+    });
+
+    if (res.success) {
+      toast.success("Motorista cadastrado com sucesso!");
+      setShowNovoMotorista(false);
+      setFormMotorista({ nome: '', cnh: '', placa_veiculo: '' });
+    } else {
+      toast.error("Erro ao cadastrar motorista: " + res.error);
+    }
+  };
 
   const loadEntregas = async () => {
     setLoading(true);
@@ -212,6 +238,41 @@ export default function EntregasLogistica() {
         </div>
       )}
 
+      {/* Modal - Novo Motorista */}
+      {showNovoMotorista && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[1001] p-4" onClick={() => setShowNovoMotorista(false)}>
+          <Card className="w-full max-w-md shadow-xl" onClick={e => e.stopPropagation()}>
+            <CardHeader className="border-b border-slate-100">
+               <div className="flex items-center justify-between">
+                  <CardTitle className="text-lg font-black text-slate-900 flex items-center gap-2">
+                     <Plus className="text-[#1A2B6D]"/> NOVO MOTORISTA
+                  </CardTitle>
+                  <button onClick={() => setShowNovoMotorista(false)} className="text-slate-300 hover:text-slate-600 transition-colors"><X size={24}/></button>
+               </div>
+            </CardHeader>
+            <CardContent className="p-6 space-y-4">
+               <div>
+                  <label className="text-[10px] font-black text-slate-400 uppercase mb-1.5 block">Nome Completo *</label>
+                  <Input placeholder="Nome do Motorista" value={formMotorista.nome} onChange={e => setFormMotorista({...formMotorista, nome: e.target.value})} />
+               </div>
+               <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="text-[10px] font-black text-slate-400 uppercase mb-1.5 block">CNH *</label>
+                    <Input placeholder="Número CNH" value={formMotorista.cnh} onChange={e => setFormMotorista({...formMotorista, cnh: e.target.value})} />
+                  </div>
+                  <div>
+                    <label className="text-[10px] font-black text-slate-400 uppercase mb-1.5 block">Placa do Veículo *</label>
+                    <Input placeholder="Ex: ABC-1234" value={formMotorista.placa_veiculo} onChange={e => setFormMotorista({...formMotorista, placa_veiculo: e.target.value})} />
+                  </div>
+               </div>
+               <Button onClick={handleNovoMotorista} className="w-full bg-[#1A2B6D] hover:bg-[#121f4f] text-white font-black h-12 rounded-xl mt-4">
+                  Cadastrar Motorista
+               </Button>
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
       {/* Modal de Comprovante Simples */}
       {comprovanteAberto && entregaSelecionada && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
@@ -240,6 +301,9 @@ export default function EntregasLogistica() {
           <p className="text-[#64748B] mt-1 font-medium">Logística diária, Roteirização e Conferência de Carga</p>
         </div>
         <div className="flex gap-2">
+          <Button onClick={() => setShowNovoMotorista(true)} className="bg-[#1A2B6D] hover:bg-[#121f4f] text-white cursor-pointer font-bold gap-2">
+             <Plus size={16} /> Novo Motorista
+          </Button>
           <Button onClick={loadEntregas} variant="outline" className="text-slate-600 gap-2">
              <RefreshCw size={16} className={loading ? "animate-spin" : ""} /> Atualizar DB
           </Button>
