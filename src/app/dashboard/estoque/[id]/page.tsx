@@ -233,7 +233,7 @@ export default function MedicamentoDetalheFEFO() {
                     </Badge>
                   </TableCell>
                   <TableCell className="text-right font-mono text-xs text-slate-500">
-                    R$ {lote.custo_unitario_compra.toFixed(2).replace('.', ',')}
+                    R$ {(lote.custo_unitario ?? 0).toFixed(2).replace('.', ',')}
                   </TableCell>
                 </TableRow>
               );

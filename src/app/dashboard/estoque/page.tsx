@@ -83,6 +83,13 @@ function EstoqueContent() {
   const [validacaoEntrada, setValidacaoEntrada] = useState<ValidacaoPreco>(null);
   const [validando, setValidando] = useState(false);
 
+  // States para autocomplete da Nova Entrada
+  const [buscaEntrada, setBuscaEntrada] = useState('');
+  const [suggestoesEntrada, setSuggestoesEntrada] = useState<Medicamento[]>([]);
+  const [suggestoesCmedEntrada, setSuggestoesCmedEntrada] = useState<{ produto: string; apresentacao: string | null; substancia: string | null; laboratorio: string | null; pmc_17: number | null; pf_17: number | null; classe_terapeutica: string | null }[]>([]);
+  const [showSuggestoesEntrada, setShowSuggestoesEntrada] = useState(false);
+  const [entradaMedNome, setEntradaMedNome] = useState('');
+
   useEffect(() => {
     loadData();
     api.getFornecedores().then(list =>
@@ -167,6 +174,8 @@ function EstoqueContent() {
       setShowNovaEntrada(false);
       setFormEntrada({ med_id: '', lote: '', validade: '', qtd: '', preco: '', fornecedor_id: '' });
       setValidacaoEntrada(null);
+      setEntradaMedNome('');
+      setBuscaEntrada('');
       loadData();
     } else {
       toast.error("Erro na transação: " + res.error);
@@ -310,8 +319,8 @@ function EstoqueContent() {
                               <td colSpan={2} className="py-3 px-4">
                                  <div className="flex items-center justify-end gap-2">
                                     <span className="text-[10px] text-slate-400 font-medium">Custo Unit:</span>
-                                    <span className={`text-[10px] font-mono font-bold ${l.custo_unitario_compra > med.preco_teto_cmed ? 'text-red-500 animate-pulse' : 'text-slate-600'}`}>
-                                       R$ {l.custo_unitario_compra?.toFixed(2)}
+                                    <span className={`text-[10px] font-mono font-bold ${(l.custo_unitario ?? 0) > med.preco_teto_cmed ? 'text-red-500 animate-pulse' : 'text-slate-600'}`}>
+                                       R$ {l.custo_unitario?.toFixed(2)}
                                     </span>
                                  </div>
                               </td>
@@ -434,7 +443,7 @@ function EstoqueContent() {
                                   nome: c.produto,
                                   dosagem: c.apresentacao || '',
                                   estoque_minimo: '',
-                                  preco_teto_cmed: c.pmc_17 ? String(c.pmc_17) : '',
+                                  preco_teto_cmed: c.pf_17 ? String(c.pf_17) : (c.pmc_17 ? String(c.pmc_17) : ''),
                                 });
                                 setSuggestoesCmed([]);
                                 setShowSuggestoes(false);
@@ -443,7 +452,8 @@ function EstoqueContent() {
                               <p className="text-sm font-bold text-slate-800">{c.produto}</p>
                               <div className="flex items-center gap-3 mt-0.5 flex-wrap">
                                 {c.apresentacao && <span className="text-[10px] text-slate-400">{c.apresentacao.slice(0, 50)}</span>}
-                                {c.pmc_17 && <span className="text-[10px] font-bold text-blue-600">PMC 17% R$ {c.pmc_17.toFixed(2)}</span>}
+                                {c.pf_17 && <span className="text-[10px] font-bold text-emerald-600">PF R$ {c.pf_17.toFixed(2)}</span>}
+                                {c.pmc_17 && <span className="text-[10px] font-bold text-blue-600">PMC R$ {c.pmc_17.toFixed(2)}</span>}
                                 {c.laboratorio && <span className="text-[10px] text-slate-400">{c.laboratorio}</span>}
                               </div>
                             </button>
@@ -496,17 +506,138 @@ function EstoqueContent() {
                </div>
             </CardHeader>
             <CardContent className="p-6 space-y-4">
-               <div>
-                  <label className="text-[10px] font-black text-slate-400 uppercase mb-1.5 block">Medicamento Alvo</label>
-                  <Select onValueChange={v => {
-                    setFormEntrada({...formEntrada, med_id: v});
-                    if (formEntrada.preco) validarPrecoEntrada(v, formEntrada.preco);
-                  }}>
-                    <SelectTrigger><SelectValue placeholder="Selecione..." /></SelectTrigger>
-                    <SelectContent>
-                      {medicamentos.map(m => <SelectItem key={m.id} value={m.id}>{m.nome}</SelectItem>)}
-                    </SelectContent>
-                  </Select>
+               {/* Medicamento Alvo — Autocomplete com busca CMED */}
+               <div className="relative">
+                  <label className="text-[10px] font-black text-slate-400 uppercase mb-1.5 block">Medicamento Alvo *</label>
+                  {entradaMedNome ? (
+                    <div className="flex items-center gap-2 bg-emerald-50 border border-emerald-200 rounded-lg p-2.5">
+                      <CheckCircle size={14} className="text-emerald-600 shrink-0" />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-bold text-slate-800 truncate">{entradaMedNome}</p>
+                        {(() => {
+                          const selectedMed = medicamentos.find(m => m.id === formEntrada.med_id);
+                          return selectedMed?.preco_teto_cmed ? (
+                            <p className="text-[10px] font-bold text-blue-600">CMED Teto: R$ {selectedMed.preco_teto_cmed.toFixed(2)}</p>
+                          ) : null;
+                        })()}
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setEntradaMedNome('');
+                          setFormEntrada({...formEntrada, med_id: ''});
+                          setBuscaEntrada('');
+                          setValidacaoEntrada(null);
+                        }}
+                        className="text-slate-400 hover:text-red-500 transition-colors"
+                      >
+                        <X size={16} />
+                      </button>
+                    </div>
+                  ) : (
+                    <Input
+                      placeholder="Digite para buscar na base CMED e cadastrados..."
+                      value={buscaEntrada}
+                      autoComplete="off"
+                      onChange={e => {
+                        const val = e.target.value;
+                        setBuscaEntrada(val);
+                        if (val.length >= 2) {
+                          const q = val.toLowerCase();
+                          const localMatches = medicamentos.filter(m => m.nome.toLowerCase().includes(q)).slice(0, 5);
+                          setSuggestoesEntrada(localMatches);
+                          api.buscarCmedReferencia(val).then(cmedResults => {
+                            setSuggestoesCmedEntrada(cmedResults);
+                            setShowSuggestoesEntrada(localMatches.length > 0 || cmedResults.length > 0);
+                          });
+                          setShowSuggestoesEntrada(localMatches.length > 0);
+                        } else {
+                          setSuggestoesEntrada([]);
+                          setSuggestoesCmedEntrada([]);
+                          setShowSuggestoesEntrada(false);
+                        }
+                      }}
+                      onFocus={() => { if (suggestoesEntrada.length > 0 || suggestoesCmedEntrada.length > 0) setShowSuggestoesEntrada(true); }}
+                      onBlur={() => setTimeout(() => setShowSuggestoesEntrada(false), 200)}
+                    />
+                  )}
+                  {/* Dropdown de sugestões */}
+                  {showSuggestoesEntrada && (suggestoesEntrada.length > 0 || suggestoesCmedEntrada.length > 0) && (
+                    <div className="absolute z-10 top-full left-0 right-0 mt-1 bg-white border border-slate-200 rounded-xl shadow-lg overflow-hidden max-h-72 overflow-y-auto">
+                      {/* Já cadastrados */}
+                      {suggestoesEntrada.length > 0 && (
+                        <>
+                          <p className="text-[9px] font-black text-emerald-600 uppercase px-3 pt-2 pb-1 bg-emerald-50 sticky top-0">✓ Já cadastrados no sistema</p>
+                          {suggestoesEntrada.map(m => (
+                            <button
+                              key={m.id}
+                              className="w-full text-left px-3 py-2.5 hover:bg-emerald-50 transition-colors border-b border-slate-50"
+                              onMouseDown={() => {
+                                setFormEntrada({...formEntrada, med_id: m.id});
+                                setEntradaMedNome(m.nome + (m.dosagem ? ` — ${m.dosagem}` : ''));
+                                setBuscaEntrada('');
+                                setSuggestoesEntrada([]);
+                                setSuggestoesCmedEntrada([]);
+                                setShowSuggestoesEntrada(false);
+                                if (formEntrada.preco) validarPrecoEntrada(m.id, formEntrada.preco);
+                              }}
+                            >
+                              <p className="text-sm font-bold text-slate-800">{m.nome}</p>
+                              <div className="flex items-center gap-3 mt-0.5">
+                                {m.dosagem && <span className="text-[10px] text-slate-400">{m.dosagem}</span>}
+                                {m.preco_teto_cmed && <span className="text-[10px] font-bold text-blue-600">CMED R$ {m.preco_teto_cmed.toFixed(2)}</span>}
+                              </div>
+                            </button>
+                          ))}
+                        </>
+                      )}
+                      {/* Base CMED para cadastrar + dar entrada */}
+                      {suggestoesCmedEntrada.length > 0 && (
+                        <>
+                          <p className="text-[9px] font-black text-blue-500 uppercase px-3 pt-2 pb-1 bg-blue-50 sticky top-0">Base CMED / ANVISA — cadastrar e dar entrada</p>
+                          {suggestoesCmedEntrada.map((c, i) => (
+                            <button
+                              key={`cmed-e-${i}`}
+                              className="w-full text-left px-3 py-2.5 hover:bg-blue-50 transition-colors border-b border-slate-50"
+                              onMouseDown={async () => {
+                                // Auto-cadastra o medicamento a partir da CMED e já seleciona
+                                const precoTeto = c.pf_17 || c.pmc_17 || 0;
+                                const res = await api.createMedicamento({
+                                  nome: c.produto,
+                                  dosagem: c.apresentacao || undefined,
+                                  estoque_minimo: 0,
+                                  preco_teto_cmed: precoTeto,
+                                });
+                                if (res.success && res.data) {
+                                  toast.success(`"${c.produto}" cadastrado automaticamente via CMED!`);
+                                  setFormEntrada({...formEntrada, med_id: res.data.id});
+                                  setEntradaMedNome(c.produto + (c.apresentacao ? ` — ${c.apresentacao.slice(0, 40)}` : ''));
+                                  loadData(); // refresh list
+                                } else {
+                                  toast.error('Erro ao cadastrar: ' + (res.error || 'desconhecido'));
+                                }
+                                setBuscaEntrada('');
+                                setSuggestoesEntrada([]);
+                                setSuggestoesCmedEntrada([]);
+                                setShowSuggestoesEntrada(false);
+                              }}
+                            >
+                              <p className="text-sm font-bold text-slate-800">{c.produto}</p>
+                              <div className="flex items-center gap-3 mt-0.5 flex-wrap">
+                                {c.apresentacao && <span className="text-[10px] text-slate-400">{c.apresentacao.slice(0, 50)}</span>}
+                                {c.pf_17 && <span className="text-[10px] font-bold text-emerald-600">PF R$ {c.pf_17.toFixed(2)}</span>}
+                                {c.pmc_17 && <span className="text-[10px] font-bold text-blue-600">PMC R$ {c.pmc_17.toFixed(2)}</span>}
+                                {c.laboratorio && <span className="text-[10px] text-slate-400">{c.laboratorio}</span>}
+                              </div>
+                            </button>
+                          ))}
+                        </>
+                      )}
+                      <div className="px-3 py-2 bg-slate-50 border-t border-slate-100">
+                        <p className="text-[9px] text-slate-400 font-medium">Selecione um cadastrado ou escolha da CMED para cadastrar automaticamente.</p>
+                      </div>
+                    </div>
+                  )}
                </div>
                <div>
                   <label className="text-[10px] font-black text-slate-400 uppercase mb-1.5 block flex items-center gap-1">

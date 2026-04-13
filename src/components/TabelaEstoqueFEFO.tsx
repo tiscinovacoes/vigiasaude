@@ -120,8 +120,8 @@ export function TabelaEstoqueFEFO() {
                       </TableCell>
                       <TableCell className="text-right font-bold">{lote.quantidade_disponivel} un.</TableCell>
                       <TableCell className="text-right font-mono text-xs">
-                        {lote.custo_unitario_compra !== null && lote.custo_unitario_compra !== undefined ? (
-                          `R$ ${lote.custo_unitario_compra.toFixed(2).replace('.', ',')}`
+                        {lote.custo_unitario !== null && lote.custo_unitario !== undefined ? (
+                          `R$ ${lote.custo_unitario.toFixed(2).replace('.', ',')}`
                         ) : (
                           <span className="text-slate-400 italic">Restrito</span>
                         )}

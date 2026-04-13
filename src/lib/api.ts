@@ -28,7 +28,7 @@ export type Lote = {
   data_validade: string;
   quantidade_disponivel: number;
   quantidade_reservada: number;
-  custo_unitario_compra: number;
+  custo_unitario: number;
   status: 'ATIVO' | 'RECALL' | 'BLOQUEADO' | 'VENCIDO';
   created_at: string;
   medicamentos?: Medicamento;
@@ -185,13 +185,18 @@ export const api = {
     fornecedor_preferencial_id?: string;
   }): Promise<{ success: boolean; data?: Medicamento; error?: string }> {
     try {
-      const { data, error } = await supabase
-        .from('medicamentos')
-        .insert([medicamento])
-        .select()
-        .single();
-      if (error) throw error;
-      return { success: true, data: data as Medicamento };
+      // Usar API route server-side para bypass do RLS
+      const res = await fetch('/api/medicamentos', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(medicamento),
+      });
+      const result = await res.json();
+      if (result.success) {
+        return { success: true, data: result.data as Medicamento };
+      } else {
+        throw new Error(result.error || 'Erro ao cadastrar medicamento');
+      }
     } catch (err: any) {
       console.error('Erro ao criar medicamento:', err);
       return { success: false, error: err?.message || 'Erro desconhecido' };
@@ -273,25 +278,19 @@ export const api = {
     try {
       // 1. Validar teto CMED antes de inserir
       const cmed = await this.validarPrecoCmed(payload.medicamento_id, payload.custo_unitario);
-      
-      // Se exceder muito, bloqueamos ou exigimos justificativa (aqui apenas logamos no metadados)
       const isExcedido = !cmed.valido;
 
-      const { error } = await supabase
-        .from('lotes')
-        .insert([{
-          medicamento_id: payload.medicamento_id,
-          codigo_lote_fabricante: payload.codigo_lote,
-          data_validade: payload.data_validade,
-          quantidade_disponivel: payload.quantidade,
-          custo_unitario_compra: payload.custo_unitario,
-          ...(payload.fornecedor_id ? { fornecedor_id: payload.fornecedor_id } : {}),
-          status: 'ATIVO'
-        }]);
+      // 2. INSERT via API Route server-side (bypass RLS com service_role_key)
+      const res = await fetch('/api/lotes/entrada', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
 
-      if (error) throw error;
+      const result = await res.json();
+      if (!result.success) throw new Error(result.error || 'Erro ao registrar entrada');
 
-      // Auditoria WORM
+      // 3. Auditoria WORM
       await auditoriaAPI.log('CREATE', 'lotes', { 
         ...payload, 
         cmed_validation: cmed,
@@ -430,7 +429,7 @@ export const api = {
           status_entrega,
           unidades_serializadas!inner (
             id,
-            lotes (custo_unitario_compra)
+            lotes (custo_unitario)
           )
         `)
         .eq('paciente_id', id)
@@ -441,7 +440,7 @@ export const api = {
       let investimentoTotal = 0;
       entregas?.forEach(ent => {
         ent.unidades_serializadas?.forEach((item: any) => {
-          const custo = item.lotes?.custo_unitario_compra || 0;
+          const custo = item.lotes?.custo_unitario || 0;
           investimentoTotal += custo;
         });
       });
@@ -851,7 +850,7 @@ export const api = {
     try {
       const { data: lotes, error } = await supabase
         .from('lotes')
-        .select('created_at, quantidade_disponivel, custo_unitario_compra');
+        .select('created_at, quantidade_disponivel, custo_unitario');
       
       if (error || !lotes || lotes.length === 0) throw error;
 

@@ -1,0 +1,12 @@
+﻿[] id: uuid
+[] medicamento_id: uuid
+[] fornecedor_id: uuid
+[] codigo_lote_fabricante: text
+[] data_validade: date
+[] quantidade_recebida: integer
+[] quantidade_disponivel: integer
+[] quantidade_reservada: integer
+[] custo_unitario: numeric
+[] status: text
+[] created_at: timestamp with time zone
+[] updated_at: timestamp with time zone
