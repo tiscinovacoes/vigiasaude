@@ -284,6 +284,7 @@ export const api = {
           data_validade: payload.data_validade,
           quantidade_disponivel: payload.quantidade,
           custo_unitario_compra: payload.custo_unitario,
+          ...(payload.fornecedor_id ? { fornecedor_id: payload.fornecedor_id } : {}),
           status: 'ATIVO'
         }]);
 

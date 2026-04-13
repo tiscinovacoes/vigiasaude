@@ -67,7 +67,7 @@ function EstoqueContent() {
   
   // States para Formulários
   const [formMedicamento, setFormMedicamento] = useState({
-    nome: '', dosagem: '', estoque_minimo: '', preco_teto_cmed: '', fornecedor_id: ''
+    nome: '', dosagem: '', estoque_minimo: '', preco_teto_cmed: ''
   });
   const [suggestoes, setSuggestoes] = useState<Medicamento[]>([]);
   const [suggestoesCmed, setSuggestoesCmed] = useState<{ produto: string; apresentacao: string | null; substancia: string | null; laboratorio: string | null; pmc_17: number | null; pf_17: number | null; classe_terapeutica: string | null }[]>([]);
@@ -75,7 +75,7 @@ function EstoqueContent() {
   const [medExistente, setMedExistente] = useState<Medicamento | null>(null);
   const [fornecedores, setFornecedores] = useState<{ id: string; razao_social: string }[]>([]);
   const [formEntrada, setFormEntrada] = useState({
-    med_id: '', lote: '', validade: '', qtd: '', preco: ''
+    med_id: '', lote: '', validade: '', qtd: '', preco: '', fornecedor_id: ''
   });
   const [formSaida, setFormSaida] = useState({
     lote_id: '', qtd: '', motivo: 'Dispensão Manual', destino: ''
@@ -135,14 +135,13 @@ function EstoqueContent() {
       dosagem: formMedicamento.dosagem || undefined,
       estoque_minimo: Number(formMedicamento.estoque_minimo),
       preco_teto_cmed: Number(formMedicamento.preco_teto_cmed),
-      ...(formMedicamento.fornecedor_id ? { fornecedor_preferencial_id: formMedicamento.fornecedor_id } : {}),
     });
 
     if (res.success) {
       toast.success("Medicamento cadastrado com sucesso!");
       setShowNovoMedicamento(false);
       setSuggestoes([]); setMedExistente(null);
-      setFormMedicamento({ nome: '', dosagem: '', estoque_minimo: '', preco_teto_cmed: '', fornecedor_id: '' });
+      setFormMedicamento({ nome: '', dosagem: '', estoque_minimo: '', preco_teto_cmed: '' });
       loadData();
     } else {
       toast.error("Erro ao cadastrar: " + res.error);
@@ -159,12 +158,15 @@ function EstoqueContent() {
       codigo_lote: formEntrada.lote,
       data_validade: formEntrada.validade,
       quantidade: Number(formEntrada.qtd),
-      custo_unitario: Number(formEntrada.preco)
+      custo_unitario: Number(formEntrada.preco),
+      ...(formEntrada.fornecedor_id ? { fornecedor_id: formEntrada.fornecedor_id } : {}),
     });
 
     if (res.success) {
       toast.success("Entrada registrada e auditada com sucesso!");
       setShowNovaEntrada(false);
+      setFormEntrada({ med_id: '', lote: '', validade: '', qtd: '', preco: '', fornecedor_id: '' });
+      setValidacaoEntrada(null);
       loadData();
     } else {
       toast.error("Erro na transação: " + res.error);
@@ -403,7 +405,6 @@ function EstoqueContent() {
                                     dosagem: m.dosagem || '',
                                     estoque_minimo: String(m.estoque_minimo),
                                     preco_teto_cmed: String(m.preco_teto_cmed ?? ''),
-                                    fornecedor_id: m.fornecedor_preferencial_id || '',
                                   });
                                   setMedExistente(m);
                                   setShowSuggestoes(false);
@@ -434,7 +435,6 @@ function EstoqueContent() {
                                   dosagem: c.apresentacao || '',
                                   estoque_minimo: '',
                                   preco_teto_cmed: c.pmc_17 ? String(c.pmc_17) : '',
-                                  fornecedor_id: '',
                                 });
                                 setSuggestoesCmed([]);
                                 setShowSuggestoes(false);
@@ -460,31 +460,6 @@ function EstoqueContent() {
                <div>
                   <label className="text-[10px] font-black text-slate-400 uppercase mb-1.5 block">Dosagem</label>
                   <Input placeholder="Ex: 500mg" value={formMedicamento.dosagem} onChange={e => setFormMedicamento({...formMedicamento, dosagem: e.target.value})} />
-               </div>
-
-               {/* Fornecedor preferencial */}
-               <div>
-                  <label className="text-[10px] font-black text-slate-400 uppercase mb-1.5 block flex items-center gap-1">
-                    Fornecedor Preferencial *
-                    <Truck size={10} className="text-slate-400" />
-                  </label>
-                  <Select onValueChange={v => setFormMedicamento({...formMedicamento, fornecedor_id: v})}>
-                    <SelectTrigger className={cn(!formMedicamento.fornecedor_id && 'border-amber-300')}>
-                      <SelectValue placeholder="Selecione um fornecedor..." />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {fornecedores.length === 0 ? (
-                        <SelectItem value="sem-fornecedor" disabled>Nenhum fornecedor cadastrado</SelectItem>
-                      ) : (
-                        fornecedores.map(f => (
-                          <SelectItem key={f.id} value={f.id}>{f.razao_social}</SelectItem>
-                        ))
-                      )}
-                    </SelectContent>
-                  </Select>
-                  {!formMedicamento.fornecedor_id && (
-                    <p className="text-[9px] text-amber-600 font-bold mt-1">Vincule um fornecedor para triagem de compras</p>
-                  )}
                </div>
 
                <div className="grid grid-cols-2 gap-4">
@@ -530,6 +505,24 @@ function EstoqueContent() {
                     <SelectTrigger><SelectValue placeholder="Selecione..." /></SelectTrigger>
                     <SelectContent>
                       {medicamentos.map(m => <SelectItem key={m.id} value={m.id}>{m.nome}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+               </div>
+               <div>
+                  <label className="text-[10px] font-black text-slate-400 uppercase mb-1.5 block flex items-center gap-1">
+                    Fornecedor
+                    <Truck size={10} className="text-slate-400" />
+                  </label>
+                  <Select onValueChange={v => setFormEntrada({...formEntrada, fornecedor_id: v})}>
+                    <SelectTrigger><SelectValue placeholder="Selecione o fornecedor..." /></SelectTrigger>
+                    <SelectContent>
+                      {fornecedores.length === 0 ? (
+                        <SelectItem value="sem-fornecedor" disabled>Nenhum fornecedor cadastrado</SelectItem>
+                      ) : (
+                        fornecedores.map(f => (
+                          <SelectItem key={f.id} value={f.id}>{f.razao_social}</SelectItem>
+                        ))
+                      )}
                     </SelectContent>
                   </Select>
                </div>
