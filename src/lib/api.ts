@@ -578,7 +578,6 @@ export const api = {
           id: u.id,
           serial_number: u.serial_number,
           medicamento_nome: u.lotes?.medicamentos?.nome,
-          medicamento_codigo: u.lotes?.medicamentos?.codigo,
           lote_codigo: u.lotes?.codigo_lote_fabricante
         })) || []
       }));
@@ -618,7 +617,6 @@ export const api = {
           id: u.id,
           serial_number: u.serial_number,
           medicamento_nome: u.lotes?.medicamentos?.nome,
-          medicamento_codigo: u.lotes?.medicamentos?.codigo,
           lote_codigo: u.lotes?.codigo_lote_fabricante
         })) || []
       }));

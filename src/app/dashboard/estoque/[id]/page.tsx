@@ -93,7 +93,7 @@ export default function MedicamentoDetalheFEFO() {
           <div>
             <div className="flex items-center gap-3">
               <h1 className="text-3xl font-black text-slate-800 tracking-tight">{medicamento.nome}</h1>
-              <Badge variant="outline" className="font-mono text-[10px] text-slate-400 border-slate-200">ID: {medicamento.codigo || 'S/C'}</Badge>
+              <Badge variant="outline" className="font-mono text-[10px] text-slate-400 border-slate-200">ID: {medicamento.id.slice(0, 8).toUpperCase()}</Badge>
               <Badge variant="secondary" className="font-bold text-xs px-3">{medicamento.dosagem}</Badge>
             </div>
             <p className="text-slate-500 font-medium mt-1 uppercase text-[10px] tracking-widest flex items-center gap-2">

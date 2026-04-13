@@ -110,7 +110,7 @@ export default function CmedPage() {
     .filter((m) => {
       if (busca) {
         const q = busca.toLowerCase();
-        return m.nome.toLowerCase().includes(q) || m.codigo.toLowerCase().includes(q);
+        return m.nome.toLowerCase().includes(q);
       }
       return true;
     })

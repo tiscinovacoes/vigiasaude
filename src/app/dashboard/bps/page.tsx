@@ -106,7 +106,7 @@ export default function BpsPage() {
     .filter((m) => {
       if (!busca) return true;
       const q = busca.toLowerCase();
-      return m.nome.toLowerCase().includes(q) || m.codigo.toLowerCase().includes(q);
+      return m.nome.toLowerCase().includes(q);
     })
     .filter((m) => {
       if (filtro === 'abaixo') return m.ultimoPreco != null && m.precoBps != null && m.ultimoPreco <= m.precoBps;
