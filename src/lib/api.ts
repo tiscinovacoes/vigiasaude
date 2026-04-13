@@ -140,6 +140,28 @@ export const api = {
   // MEDICAMENTOS & LOTES
   // --------------------------------------------------------------------------
 
+  async buscarCmedReferencia(termo: string): Promise<{
+    produto: string;
+    apresentacao: string | null;
+    substancia: string | null;
+    laboratorio: string | null;
+    pmc_17: number | null;
+    pf_17: number | null;
+    classe_terapeutica: string | null;
+  }[]> {
+    try {
+      const { data } = await supabase
+        .from('cmed_referencia')
+        .select('produto, apresentacao, substancia, laboratorio, pmc_17, pf_17, classe_terapeutica')
+        .or(`produto.ilike.%${termo}%,substancia.ilike.%${termo}%`)
+        .order('produto')
+        .limit(8);
+      return data ?? [];
+    } catch {
+      return [];
+    }
+  },
+
   async getEstoqueBase(): Promise<Medicamento[]> {
     try {
       const { data, error } = await supabase

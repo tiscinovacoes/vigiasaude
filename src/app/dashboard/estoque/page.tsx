@@ -70,6 +70,7 @@ function EstoqueContent() {
     nome: '', dosagem: '', estoque_minimo: '', preco_teto_cmed: '', fornecedor_id: ''
   });
   const [suggestoes, setSuggestoes] = useState<Medicamento[]>([]);
+  const [suggestoesCmed, setSuggestoesCmed] = useState<{ produto: string; apresentacao: string | null; substancia: string | null; laboratorio: string | null; pmc_17: number | null; pf_17: number | null; classe_terapeutica: string | null }[]>([]);
   const [showSuggestoes, setShowSuggestoes] = useState(false);
   const [medExistente, setMedExistente] = useState<Medicamento | null>(null);
   const [fornecedores, setFornecedores] = useState<{ id: string; razao_social: string }[]>([]);
@@ -365,55 +366,92 @@ function EstoqueContent() {
                       setMedExistente(null);
                       if (val.length >= 2) {
                         const q = val.toLowerCase();
-                        const matches = medicamentos.filter(m => m.nome.toLowerCase().includes(q)).slice(0, 6);
-                        setSuggestoes(matches);
-                        setShowSuggestoes(matches.length > 0);
+                        const localMatches = medicamentos.filter(m => m.nome.toLowerCase().includes(q)).slice(0, 4);
+                        setSuggestoes(localMatches);
+                        // Busca também na base CMED
+                        api.buscarCmedReferencia(val).then(cmedResults => {
+                          setSuggestoesCmed(cmedResults);
+                          setShowSuggestoes(localMatches.length > 0 || cmedResults.length > 0);
+                        });
+                        setShowSuggestoes(localMatches.length > 0);
                       } else {
                         setSuggestoes([]);
+                        setSuggestoesCmed([]);
                         setShowSuggestoes(false);
                       }
                     }}
                     onFocus={() => { if (suggestoes.length > 0) setShowSuggestoes(true); }}
                     onBlur={() => setTimeout(() => setShowSuggestoes(false), 150)}
                   />
-                  {showSuggestoes && suggestoes.length > 0 && (
-                    <div className="absolute z-10 top-full left-0 right-0 mt-1 bg-white border border-slate-200 rounded-xl shadow-lg overflow-hidden">
-                      <p className="text-[9px] font-black text-slate-400 uppercase px-3 pt-2 pb-1">Já cadastrados</p>
-                      {suggestoes.map(m => {
-                        const bpsPrecos: Record<string, number> = typeof window !== 'undefined'
-                          ? JSON.parse(localStorage.getItem('bps_precos') || '{}') : {};
-                        const bpsRef = bpsPrecos[m.id];
-                        return (
-                          <button
-                            key={m.id}
-                            className="w-full text-left px-3 py-2.5 hover:bg-blue-50 transition-colors border-b border-slate-50 last:border-0"
-                            onMouseDown={() => {
-                              setFormMedicamento({
-                                nome: m.nome,
-                                dosagem: m.dosagem || '',
-                                estoque_minimo: String(m.estoque_minimo),
-                                preco_teto_cmed: String(m.preco_teto_cmed ?? ''),
-                                fornecedor_id: m.fornecedor_preferencial_id || '',
-                              });
-                              setMedExistente(m);
-                              setShowSuggestoes(false);
-                            }}
-                          >
-                            <p className="text-sm font-bold text-slate-800">{m.nome}</p>
-                            <div className="flex items-center gap-3 mt-0.5">
-                              {m.dosagem && <span className="text-[10px] text-slate-400">{m.dosagem}</span>}
-                              {m.preco_teto_cmed && (
-                                <span className="text-[10px] font-bold text-blue-600">CMED R$ {m.preco_teto_cmed.toFixed(2)}</span>
-                              )}
-                              {bpsRef && (
-                                <span className="text-[10px] font-bold text-emerald-600">BPS R$ {bpsRef.toFixed(2)}</span>
-                              )}
-                            </div>
-                          </button>
-                        );
-                      })}
+                  {showSuggestoes && (suggestoes.length > 0 || suggestoesCmed.length > 0) && (
+                    <div className="absolute z-10 top-full left-0 right-0 mt-1 bg-white border border-slate-200 rounded-xl shadow-lg overflow-hidden max-h-72 overflow-y-auto">
+                      {/* Já cadastrados no sistema */}
+                      {suggestoes.length > 0 && (
+                        <>
+                          <p className="text-[9px] font-black text-slate-400 uppercase px-3 pt-2 pb-1 sticky top-0 bg-white">Já cadastrados</p>
+                          {suggestoes.map(m => {
+                            const bpsPrecos: Record<string, number> = typeof window !== 'undefined'
+                              ? JSON.parse(localStorage.getItem('bps_precos') || '{}') : {};
+                            const bpsRef = bpsPrecos[m.id];
+                            return (
+                              <button
+                                key={m.id}
+                                className="w-full text-left px-3 py-2.5 hover:bg-blue-50 transition-colors border-b border-slate-50"
+                                onMouseDown={() => {
+                                  setFormMedicamento({
+                                    nome: m.nome,
+                                    dosagem: m.dosagem || '',
+                                    estoque_minimo: String(m.estoque_minimo),
+                                    preco_teto_cmed: String(m.preco_teto_cmed ?? ''),
+                                    fornecedor_id: m.fornecedor_preferencial_id || '',
+                                  });
+                                  setMedExistente(m);
+                                  setShowSuggestoes(false);
+                                }}
+                              >
+                                <p className="text-sm font-bold text-slate-800">{m.nome}</p>
+                                <div className="flex items-center gap-3 mt-0.5">
+                                  {m.dosagem && <span className="text-[10px] text-slate-400">{m.dosagem}</span>}
+                                  {m.preco_teto_cmed && <span className="text-[10px] font-bold text-blue-600">CMED R$ {m.preco_teto_cmed.toFixed(2)}</span>}
+                                  {bpsRef && <span className="text-[10px] font-bold text-emerald-600">BPS R$ {bpsRef.toFixed(2)}</span>}
+                                </div>
+                              </button>
+                            );
+                          })}
+                        </>
+                      )}
+                      {/* Base CMED ANVISA */}
+                      {suggestoesCmed.length > 0 && (
+                        <>
+                          <p className="text-[9px] font-black text-blue-500 uppercase px-3 pt-2 pb-1 bg-blue-50 sticky top-0">Base CMED / ANVISA</p>
+                          {suggestoesCmed.map((c, i) => (
+                            <button
+                              key={i}
+                              className="w-full text-left px-3 py-2.5 hover:bg-blue-50 transition-colors border-b border-slate-50"
+                              onMouseDown={() => {
+                                setFormMedicamento({
+                                  nome: c.produto,
+                                  dosagem: c.apresentacao || '',
+                                  estoque_minimo: '',
+                                  preco_teto_cmed: c.pmc_17 ? String(c.pmc_17) : '',
+                                  fornecedor_id: '',
+                                });
+                                setSuggestoesCmed([]);
+                                setShowSuggestoes(false);
+                              }}
+                            >
+                              <p className="text-sm font-bold text-slate-800">{c.produto}</p>
+                              <div className="flex items-center gap-3 mt-0.5 flex-wrap">
+                                {c.apresentacao && <span className="text-[10px] text-slate-400">{c.apresentacao.slice(0, 50)}</span>}
+                                {c.pmc_17 && <span className="text-[10px] font-bold text-blue-600">PMC 17% R$ {c.pmc_17.toFixed(2)}</span>}
+                                {c.laboratorio && <span className="text-[10px] text-slate-400">{c.laboratorio}</span>}
+                              </div>
+                            </button>
+                          ))}
+                        </>
+                      )}
                       <div className="px-3 py-2 bg-slate-50 border-t border-slate-100">
-                        <p className="text-[9px] text-slate-400 font-medium">Não encontrou? Continue digitando para criar novo.</p>
+                        <p className="text-[9px] text-slate-400 font-medium">Selecione da base CMED para pré-preencher o teto de preço.</p>
                       </div>
                     </div>
                   )}
