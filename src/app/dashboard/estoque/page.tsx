@@ -69,6 +69,9 @@ function EstoqueContent() {
   const [formMedicamento, setFormMedicamento] = useState({
     nome: '', dosagem: '', estoque_minimo: '', preco_teto_cmed: ''
   });
+  const [suggestoes, setSuggestoes] = useState<Medicamento[]>([]);
+  const [showSuggestoes, setShowSuggestoes] = useState(false);
+  const [medExistente, setMedExistente] = useState<Medicamento | null>(null);
   const [formEntrada, setFormEntrada] = useState({
     med_id: '', lote: '', validade: '', qtd: '', preco: ''
   });
@@ -320,21 +323,95 @@ function EstoqueContent() {
 
       {/* Modal - Novo Medicamento */}
       {showNovoMedicamento && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[1001] p-4" onClick={() => setShowNovoMedicamento(false)}>
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[1001] p-4" onClick={() => { setShowNovoMedicamento(false); setSuggestoes([]); setMedExistente(null); }}>
           <Card className="w-full max-w-lg shadow-2xl bg-white border-0" onClick={e => e.stopPropagation()}>
             <CardHeader className="border-b border-slate-100">
                <div className="flex items-center justify-between">
                   <CardTitle className="text-lg font-black text-slate-900 flex items-center gap-2">
                      <Plus className="text-[#1A2B6D]"/> NOVO MEDICAMENTO
                   </CardTitle>
-                  <button onClick={() => setShowNovoMedicamento(false)} className="text-slate-300 hover:text-slate-600 transition-colors"><X size={24}/></button>
+                  <button onClick={() => { setShowNovoMedicamento(false); setSuggestoes([]); setMedExistente(null); }} className="text-slate-300 hover:text-slate-600 transition-colors"><X size={24}/></button>
                </div>
             </CardHeader>
             <CardContent className="p-6 space-y-4">
-               <div>
+
+               {/* Banner medicamento existente selecionado */}
+               {medExistente && (
+                 <div className="flex items-start gap-3 bg-blue-50 border border-blue-200 rounded-xl p-3">
+                   <Info size={15} className="text-blue-600 shrink-0 mt-0.5" />
+                   <div>
+                     <p className="text-[10px] font-black text-blue-700 uppercase">Medicamento já cadastrado</p>
+                     <p className="text-xs text-blue-600 font-medium">Valores CMED e BPS já configurados foram pré-preenchidos. Você pode ajustá-los.</p>
+                   </div>
+                 </div>
+               )}
+
+               {/* Campo nome com autocomplete */}
+               <div className="relative">
                   <label className="text-[10px] font-black text-slate-400 uppercase mb-1.5 block">Nome do Medicamento *</label>
-                  <Input placeholder="Ex: Paracetamol 500mg" value={formMedicamento.nome} onChange={e => setFormMedicamento({...formMedicamento, nome: e.target.value})} />
+                  <Input
+                    placeholder="Digite para buscar ou criar..."
+                    value={formMedicamento.nome}
+                    autoComplete="off"
+                    onChange={e => {
+                      const val = e.target.value;
+                      setFormMedicamento({...formMedicamento, nome: val});
+                      setMedExistente(null);
+                      if (val.length >= 2) {
+                        const q = val.toLowerCase();
+                        const matches = medicamentos.filter(m => m.nome.toLowerCase().includes(q)).slice(0, 6);
+                        setSuggestoes(matches);
+                        setShowSuggestoes(matches.length > 0);
+                      } else {
+                        setSuggestoes([]);
+                        setShowSuggestoes(false);
+                      }
+                    }}
+                    onFocus={() => { if (suggestoes.length > 0) setShowSuggestoes(true); }}
+                    onBlur={() => setTimeout(() => setShowSuggestoes(false), 150)}
+                  />
+                  {showSuggestoes && suggestoes.length > 0 && (
+                    <div className="absolute z-10 top-full left-0 right-0 mt-1 bg-white border border-slate-200 rounded-xl shadow-lg overflow-hidden">
+                      <p className="text-[9px] font-black text-slate-400 uppercase px-3 pt-2 pb-1">Já cadastrados</p>
+                      {suggestoes.map(m => {
+                        const bpsPrecos: Record<string, number> = typeof window !== 'undefined'
+                          ? JSON.parse(localStorage.getItem('bps_precos') || '{}') : {};
+                        const bpsRef = bpsPrecos[m.id];
+                        return (
+                          <button
+                            key={m.id}
+                            className="w-full text-left px-3 py-2.5 hover:bg-blue-50 transition-colors border-b border-slate-50 last:border-0"
+                            onMouseDown={() => {
+                              setFormMedicamento({
+                                nome: m.nome,
+                                dosagem: m.dosagem || '',
+                                estoque_minimo: String(m.estoque_minimo),
+                                preco_teto_cmed: String(m.preco_teto_cmed ?? ''),
+                              });
+                              setMedExistente(m);
+                              setShowSuggestoes(false);
+                            }}
+                          >
+                            <p className="text-sm font-bold text-slate-800">{m.nome}</p>
+                            <div className="flex items-center gap-3 mt-0.5">
+                              {m.dosagem && <span className="text-[10px] text-slate-400">{m.dosagem}</span>}
+                              {m.preco_teto_cmed && (
+                                <span className="text-[10px] font-bold text-blue-600">CMED R$ {m.preco_teto_cmed.toFixed(2)}</span>
+                              )}
+                              {bpsRef && (
+                                <span className="text-[10px] font-bold text-emerald-600">BPS R$ {bpsRef.toFixed(2)}</span>
+                              )}
+                            </div>
+                          </button>
+                        );
+                      })}
+                      <div className="px-3 py-2 bg-slate-50 border-t border-slate-100">
+                        <p className="text-[9px] text-slate-400 font-medium">Não encontrou? Continue digitando para criar novo.</p>
+                      </div>
+                    </div>
+                  )}
                </div>
+
                <div>
                   <label className="text-[10px] font-black text-slate-400 uppercase mb-1.5 block">Dosagem</label>
                   <Input placeholder="Ex: 500mg" value={formMedicamento.dosagem} onChange={e => setFormMedicamento({...formMedicamento, dosagem: e.target.value})} />
@@ -345,12 +422,15 @@ function EstoqueContent() {
                     <Input type="number" placeholder="Ex: 100" value={formMedicamento.estoque_minimo} onChange={e => setFormMedicamento({...formMedicamento, estoque_minimo: e.target.value})} />
                   </div>
                   <div>
-                    <label className="text-[10px] font-black text-slate-400 uppercase mb-1.5 block">Preço Teto CMED (R$) *</label>
+                    <label className="text-[10px] font-black text-slate-400 uppercase mb-1.5 block flex items-center gap-1">
+                      Preço Teto CMED (R$) *
+                      {medExistente?.preco_teto_cmed && <ShieldCheck size={10} className="text-blue-500" />}
+                    </label>
                     <Input type="number" step="0.01" placeholder="0.00" value={formMedicamento.preco_teto_cmed} onChange={e => setFormMedicamento({...formMedicamento, preco_teto_cmed: e.target.value})} />
                   </div>
                </div>
                <Button onClick={handleNovoMedicamento} className="w-full bg-[#1A2B6D] hover:bg-[#121f4f] text-white font-black h-12 rounded-xl mt-4">
-                  Salvar Medicamento
+                  {medExistente ? 'Atualizar Cadastro' : 'Salvar Novo Medicamento'}
                </Button>
             </CardContent>
           </Card>
