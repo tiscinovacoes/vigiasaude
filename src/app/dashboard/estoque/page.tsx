@@ -67,11 +67,12 @@ function EstoqueContent() {
   
   // States para Formulários
   const [formMedicamento, setFormMedicamento] = useState({
-    nome: '', dosagem: '', estoque_minimo: '', preco_teto_cmed: ''
+    nome: '', dosagem: '', estoque_minimo: '', preco_teto_cmed: '', fornecedor_id: ''
   });
   const [suggestoes, setSuggestoes] = useState<Medicamento[]>([]);
   const [showSuggestoes, setShowSuggestoes] = useState(false);
   const [medExistente, setMedExistente] = useState<Medicamento | null>(null);
+  const [fornecedores, setFornecedores] = useState<{ id: string; razao_social: string }[]>([]);
   const [formEntrada, setFormEntrada] = useState({
     med_id: '', lote: '', validade: '', qtd: '', preco: ''
   });
@@ -83,6 +84,9 @@ function EstoqueContent() {
 
   useEffect(() => {
     loadData();
+    api.getFornecedores().then(list =>
+      setFornecedores(list.map(f => ({ id: f.id, razao_social: f.razao_social })))
+    ).catch(() => {});
   }, []);
 
   const validarPrecoEntrada = useCallback(async (medId: string, preco: string) => {
@@ -129,13 +133,15 @@ function EstoqueContent() {
       nome: formMedicamento.nome,
       dosagem: formMedicamento.dosagem || undefined,
       estoque_minimo: Number(formMedicamento.estoque_minimo),
-      preco_teto_cmed: Number(formMedicamento.preco_teto_cmed)
+      preco_teto_cmed: Number(formMedicamento.preco_teto_cmed),
+      ...(formMedicamento.fornecedor_id ? { fornecedor_preferencial_id: formMedicamento.fornecedor_id } : {}),
     });
 
     if (res.success) {
       toast.success("Medicamento cadastrado com sucesso!");
       setShowNovoMedicamento(false);
-      setFormMedicamento({ nome: '', dosagem: '', estoque_minimo: '', preco_teto_cmed: '' });
+      setSuggestoes([]); setMedExistente(null);
+      setFormMedicamento({ nome: '', dosagem: '', estoque_minimo: '', preco_teto_cmed: '', fornecedor_id: '' });
       loadData();
     } else {
       toast.error("Erro ao cadastrar: " + res.error);
@@ -387,6 +393,7 @@ function EstoqueContent() {
                                 dosagem: m.dosagem || '',
                                 estoque_minimo: String(m.estoque_minimo),
                                 preco_teto_cmed: String(m.preco_teto_cmed ?? ''),
+                                fornecedor_id: m.fornecedor_preferencial_id || '',
                               });
                               setMedExistente(m);
                               setShowSuggestoes(false);
@@ -416,6 +423,32 @@ function EstoqueContent() {
                   <label className="text-[10px] font-black text-slate-400 uppercase mb-1.5 block">Dosagem</label>
                   <Input placeholder="Ex: 500mg" value={formMedicamento.dosagem} onChange={e => setFormMedicamento({...formMedicamento, dosagem: e.target.value})} />
                </div>
+
+               {/* Fornecedor preferencial */}
+               <div>
+                  <label className="text-[10px] font-black text-slate-400 uppercase mb-1.5 block flex items-center gap-1">
+                    Fornecedor Preferencial *
+                    <Truck size={10} className="text-slate-400" />
+                  </label>
+                  <Select onValueChange={v => setFormMedicamento({...formMedicamento, fornecedor_id: v})}>
+                    <SelectTrigger className={cn(!formMedicamento.fornecedor_id && 'border-amber-300')}>
+                      <SelectValue placeholder="Selecione um fornecedor..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {fornecedores.length === 0 ? (
+                        <SelectItem value="sem-fornecedor" disabled>Nenhum fornecedor cadastrado</SelectItem>
+                      ) : (
+                        fornecedores.map(f => (
+                          <SelectItem key={f.id} value={f.id}>{f.razao_social}</SelectItem>
+                        ))
+                      )}
+                    </SelectContent>
+                  </Select>
+                  {!formMedicamento.fornecedor_id && (
+                    <p className="text-[9px] text-amber-600 font-bold mt-1">Vincule um fornecedor para triagem de compras</p>
+                  )}
+               </div>
+
                <div className="grid grid-cols-2 gap-4">
                   <div>
                     <label className="text-[10px] font-black text-slate-400 uppercase mb-1.5 block">Estoque Mínimo *</label>

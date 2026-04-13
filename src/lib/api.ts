@@ -16,6 +16,7 @@ export type Medicamento = {
   dosagem: string | null;
   estoque_minimo: number;
   preco_teto_cmed: number;
+  fornecedor_preferencial_id?: string | null;
   created_at: string;
   lotes?: Lote[];
 };
@@ -158,6 +159,7 @@ export const api = {
     dosagem?: string;
     estoque_minimo: number;
     preco_teto_cmed: number;
+    fornecedor_preferencial_id?: string;
   }): Promise<{ success: boolean; data?: Medicamento; error?: string }> {
     try {
       const { data, error } = await supabase

@@ -14,6 +14,8 @@ import {
   RefreshCw,
   ExternalLink,
   FileSpreadsheet,
+  Upload,
+  CheckCircle2,
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -39,9 +41,15 @@ export default function CmedPage() {
   const [editandoId, setEditandoId] = useState<string | null>(null);
   const [novoTeto, setNovoTeto] = useState('');
   const [salvando, setSalvando] = useState(false);
+  const [importando, setImportando] = useState(false);
+  const [statusImport, setStatusImport] = useState<{ total: number; ultima: string | null } | null>(null);
 
   useEffect(() => {
     carregar();
+    fetch('/api/cmed/import')
+      .then(r => r.json())
+      .then(d => setStatusImport({ total: d.total_registros, ultima: d.ultima_atualizacao }))
+      .catch(() => {});
   }, []);
 
   async function carregar() {
@@ -80,6 +88,30 @@ export default function CmedPage() {
       toast.error('Erro ao carregar dados CMED');
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function handleUploadCmed(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setImportando(true);
+    try {
+      const form = new FormData();
+      form.append('file', file);
+      const res = await fetch('/api/cmed/import', { method: 'POST', body: form });
+      const json = await res.json();
+      if (json.success) {
+        toast.success(`✓ ${json.inseridos} medicamentos importados da tabela CMED`);
+        setStatusImport({ total: json.inseridos, ultima: new Date().toISOString() });
+        carregar();
+      } else {
+        toast.error('Erro no import: ' + json.error);
+      }
+    } catch {
+      toast.error('Falha ao processar o arquivo CMED');
+    } finally {
+      setImportando(false);
+      e.target.value = '';
     }
   }
 
@@ -164,7 +196,20 @@ export default function CmedPage() {
             </div>
           </div>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
+          {statusImport && (
+            <div className="flex items-center gap-1.5 text-[10px] font-bold text-slate-500 bg-slate-100 px-3 py-1.5 rounded-lg">
+              <CheckCircle2 className="w-3 h-3 text-emerald-500" />
+              {statusImport.total > 0
+                ? `${statusImport.total.toLocaleString()} refs CMED`
+                : 'Sem dados CMED'}
+              {statusImport.ultima && (
+                <span className="text-slate-400 font-normal">
+                  — {new Date(statusImport.ultima).toLocaleDateString('pt-BR')}
+                </span>
+              )}
+            </div>
+          )}
           <Button
             variant="outline"
             size="sm"
@@ -174,6 +219,30 @@ export default function CmedPage() {
             <RefreshCw className="w-4 h-4" />
             Atualizar
           </Button>
+          {/* Upload tabela CMED */}
+          <label className="cursor-pointer">
+            <input
+              type="file"
+              accept=".xls,.xlsx"
+              className="hidden"
+              onChange={handleUploadCmed}
+              disabled={importando}
+            />
+            <Button
+              size="sm"
+              variant="outline"
+              className="gap-2 border-emerald-300 text-emerald-700 hover:bg-emerald-50 cursor-pointer"
+              disabled={importando}
+              asChild={false}
+              onClick={e => (e.currentTarget.previousElementSibling as HTMLInputElement)?.click()}
+            >
+              {importando ? (
+                <><RefreshCw className="w-4 h-4 animate-spin" /> Importando...</>
+              ) : (
+                <><Upload className="w-4 h-4" /> Importar CMED (.xls)</>
+              )}
+            </Button>
+          </label>
           <a
             href="https://www.gov.br/anvisa/pt-br/assuntos/medicamentos/cmed/precos"
             target="_blank"
