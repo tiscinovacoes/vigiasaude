@@ -30,6 +30,8 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { api, EntregaLogistica } from '@/lib/api';
+import { AlertaSegurancaModal } from '@/components/AlertaSegurancaModal';
+import Link from 'next/link';
 
 // Configurações Estéticas (do arquivo premium fornecido)
 const statusMotoristaConfig: Record<string, { bg: string; text: string; dot: string }> = {
@@ -57,6 +59,7 @@ export default function MonitoramentoPage() {
   const [loading, setLoading] = useState(true);
   const [selecionadaId, setSelecionadaId] = useState<string | null>(null);
   const [comprovanteAberto, setComprovanteAberto] = useState<EntregaLogistica | null>(null);
+  const [alertaSeguranca, setAlertaSeguranca] = useState<{ entrega: EntregaLogistica; tipo: 'desvio_rota' | 'parado_excessivo' } | null>(null);
 
   useEffect(() => {
     async function loadData() {
@@ -89,6 +92,15 @@ export default function MonitoramentoPage() {
   return (
     <div className="p-4 space-y-4 bg-slate-50 min-h-full">
       
+      {/* MODAL DE ALERTA DE SEGURANÇA */}
+      {alertaSeguranca && (
+        <AlertaSegurancaModal
+          entrega={alertaSeguranca.entrega}
+          tipo={alertaSeguranca.tipo}
+          onClose={() => setAlertaSeguranca(null)}
+        />
+      )}
+
       {/* MODAL DE COMPROVANTE (Premium) */}
       {comprovanteAberto && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[1001] p-4">
@@ -191,7 +203,7 @@ export default function MonitoramentoPage() {
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 bg-white p-5 rounded-2xl border shadow-sm">
         <div>
           <div className="flex items-center gap-2">
-            <h1 className="text-xl font-black text-[#1E293B]">Live Monitoramento</h1>
+            <h1 className="text-xl font-black text-[#1E293B]">Monitoramento em Tempo Real</h1>
             <span className="relative flex h-3 w-3">
               <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
               <span className="relative inline-flex rounded-full h-3 w-3 bg-green-500"></span>
@@ -199,9 +211,20 @@ export default function MonitoramentoPage() {
           </div>
           <p className="text-slate-500 text-xs font-semibold mt-1">Rastreabilidade em Tempo Real - Município Teste/MS</p>
         </div>
-        <div className="flex items-center gap-6">
+        <div className="flex items-center gap-4">
+          {/* Botão demo: simula alerta de segurança */}
+          {entregas.length > 0 && (
+            <Button
+              onClick={() => setAlertaSeguranca({ entrega: entregas[0], tipo: 'desvio_rota' })}
+              className="bg-red-600 hover:bg-red-700 text-white text-xs font-bold gap-2 animate-pulse cursor-pointer"
+              size="sm"
+            >
+              <AlertTriangle size={14} />
+              🚨 Alerta Ativo
+            </Button>
+          )}
           <div className="text-right">
-              <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Entregas Hoy</p>
+              <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Entregas Hoje</p>
               <p className="text-lg font-black text-emerald-600">{totalEntregasDia} / {entregas.length}</p>
           </div>
           <div className="text-right">
@@ -223,26 +246,46 @@ export default function MonitoramentoPage() {
                 const cfg = statusMotoristaConfig[e.status_entrega];
                 const isSelected = selecionadaId === e.id;
                 return (
-                  <Card 
+                  <Card
                     key={e.id}
-                    className={`cursor-pointer transition-all hover:shadow-md border-l-4 ${isSelected ? "ring-2 ring-[#1E3A8A] border-l-[#1E3A8A] shadow-md" : "border-l-slate-200"}`}
+                    className={`cursor-pointer transition-all hover:shadow-md border-l-4 ${isSelected ? "ring-2 ring-[#1E3A8A] border-l-[#1E3A8A] shadow-md" : e.status_entrega === 'FALHA' ? 'border-l-red-500' : "border-l-slate-200"}`}
                     onClick={() => setSelecionadaId(e.id)}
                   >
                     <CardContent className="p-4">
                        <div className="flex justify-between items-start mb-2">
-                          <div>
-                             <h4 className="font-bold text-slate-900 text-sm leading-tight">{e.pacientes?.nome_completo}</h4>
-                             <p className="text-[10px] font-bold text-slate-400 mt-1 uppercase tracking-tight">{e.motoristas?.nome || 'Logística Central'}</p>
+                          <div className="flex-1 min-w-0">
+                             <h4 className="font-bold text-slate-900 text-sm leading-tight truncate">{e.pacientes?.nome_completo}</h4>
+                             <p className="text-[10px] font-bold text-slate-400 mt-0.5 uppercase tracking-tight">{e.motoristas?.nome || 'Logística Central'}</p>
                           </div>
-                          <Badge className={`${cfg.bg} ${cfg.text} text-[10px] border-none font-bold uppercase`}>{e.status_entrega}</Badge>
+                          <Badge className={`${cfg.bg} ${cfg.text} text-[10px] border-none font-bold uppercase shrink-0 ml-2`}>{e.status_entrega}</Badge>
                        </div>
-                       <div className="flex items-center gap-3 mt-3">
+                       <div className="flex items-center gap-3 mt-2">
                           <div className="flex items-center gap-1 text-[10px] font-bold text-slate-500">
                              <Thermometer size={12} className="text-blue-500"/> 4.2°C
                           </div>
                           <div className="flex items-center gap-1 text-[10px] font-bold text-slate-500">
                              <Clock size={12} className="text-slate-400"/> {new Date(e.created_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
                           </div>
+                       </div>
+                       {/* Ações rápidas */}
+                       <div className="flex items-center gap-2 mt-3 pt-2 border-t border-slate-100">
+                          {e.status_entrega === 'FALHA' && (
+                            <button
+                              onClick={(ev) => { ev.stopPropagation(); setAlertaSeguranca({ entrega: e, tipo: 'desvio_rota' }); }}
+                              className="flex items-center gap-1 text-[10px] font-bold text-red-600 bg-red-50 hover:bg-red-100 rounded px-2 py-1 transition-colors cursor-pointer"
+                            >
+                              <AlertTriangle size={10} /> Alerta
+                            </button>
+                          )}
+                          {e.motorista_id && (
+                            <Link
+                              href={`/dashboard/motorista/${e.motorista_id}`}
+                              onClick={(ev) => ev.stopPropagation()}
+                              className="flex items-center gap-1 text-[10px] font-bold text-[#1E3A8A] bg-blue-50 hover:bg-blue-100 rounded px-2 py-1 transition-colors"
+                            >
+                              <Activity size={10} /> Dashboard
+                            </Link>
+                          )}
                        </div>
                     </CardContent>
                   </Card>
@@ -285,6 +328,15 @@ export default function MonitoramentoPage() {
                        <ShieldCheck size={16} className="text-emerald-400" />
                        <span className="text-[10px] font-bold">FEFO & Cadeia de Frio Verificados</span>
                     </div>
+                    {entregaSelecionada.motorista_id && (
+                      <Link
+                        href={`/dashboard/motorista/${entregaSelecionada.motorista_id}`}
+                        className="mt-3 flex items-center justify-center gap-2 w-full bg-white/15 hover:bg-white/25 transition-colors rounded py-2 text-[11px] font-bold text-white border border-white/20"
+                      >
+                        <Activity size={12} />
+                        Ver Dashboard de Performance
+                      </Link>
+                    )}
                  </CardContent>
               </Card>
 

@@ -1,34 +1,36 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { 
-  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, Legend, ResponsiveContainer 
+import {
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, Legend, ResponsiveContainer
 } from 'recharts';
-import { 
-  AlertOctagon, Clock, TrendingDown, DollarSign, 
+import {
+  AlertOctagon, Clock, TrendingDown, DollarSign,
   Users, UserPlus, Activity, Truck, AlertTriangle,
   ArrowUpRight,
   TrendingUp,
-  Package
+  Package,
+  ClipboardList,
+  CheckCircle2,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { 
-  Card, 
-  CardContent, 
-  CardDescription, 
-  CardHeader, 
-  CardTitle 
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle
 } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { Skeleton } from '@/components/ui/skeleton';
-import { 
-  Table, 
-  TableBody, 
-  TableCell, 
-  TableHead, 
-  TableHeader, 
-  TableRow 
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow
 } from '@/components/ui/table';
 import { api, type Fornecedor, type KpisDashboard } from '@/lib/api';
 import { cn } from '@/lib/utils';
@@ -108,48 +110,94 @@ export default function ExecutiveDashboard() {
           dataSource === 'live' ? 'text-emerald-600 border-emerald-200' : 'text-slate-500'
         )}>
           <Activity size={14} className={dataSource === 'live' ? 'text-emerald-500' : 'text-orange-400'} />
-          {dataSource === 'live' ? 'Live: Supabase Conectado' : 'Modo: Dados Locais'}
+          {dataSource === 'live' ? 'Ao Vivo: Supabase Conectado' : 'Modo: Dados Locais'}
         </Badge>
       </div>
 
-      {/* KPI GRID */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        <KPIItem 
-           title="Estoque Crítico" 
-           value={kpis?.estoqueCritico?.toString() || '0'} 
-           trend={kpis && kpis.estoqueCritico > 0 ? `${kpis.estoqueCritico} itens` : 'OK'} 
-           icon={AlertOctagon} 
-           color={kpis && kpis.estoqueCritico > 0 ? 'destructive' : 'success'} 
-           desc="Itens abaixo do mínimo" 
-           href="/dashboard/estoque"
-        />
-        <KPIItem 
-           title="Lead Time Médio" 
-           value={kpis?.leadTimeMedio ? `${kpis.leadTimeMedio}d` : '0d'} 
-           trend="Fornecedores" 
-           icon={Clock} 
-           color="primary" 
-           desc="Geral dos fornecedores" 
-           href="/dashboard/lead-time"
-        />
-        <KPIItem 
-           title="Pacientes Ativos" 
-           value={kpis?.totalPacientes?.toString() || '0'} 
-           trend="Cadastrados" 
-           icon={Users} 
-           color="success" 
-           desc="No sistema" 
-           href="/dashboard/pacientes"
-        />
-        <KPIItem 
-           title="Entregas Ativas" 
-           value={kpis?.entregasAtivas?.toString() || '0'} 
-           trend={`${kpis?.entregasConcluidas || 0} concluídas`} 
-           icon={Truck} 
-           color="info" 
-           desc="Em rota ou pendentes" 
-           href="/dashboard/entregas"
-        />
+      {/* KPI GRID — Indicadores de Estoque */}
+      <div>
+        <p className="text-xs text-slate-400 uppercase tracking-wider font-bold mb-2">Indicadores de Estoque</p>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          <KPIItem
+            title="Estoque Crítico"
+            value={kpis?.estoqueCritico?.toString() || '0'}
+            trend={kpis && kpis.estoqueCritico > 0 ? `${kpis.estoqueCritico} itens` : 'OK'}
+            icon={AlertOctagon}
+            color={kpis && kpis.estoqueCritico > 0 ? 'destructive' : 'success'}
+            desc="Medicamentos abaixo do mínimo"
+            href="/dashboard/estoque"
+          />
+          <KPIItem
+            title="Previsão Ruptura 7d"
+            value={kpis?.riscoRupturaCount?.toString() || '0'}
+            trend="Itens em risco"
+            icon={TrendingDown}
+            color={kpis && kpis.riscoRupturaCount > 0 ? 'warning' : 'success'}
+            desc="Itens com cobertura < 7 dias"
+            href="/dashboard/estoque"
+          />
+          <KPIItem
+            title="Lead Time Médio"
+            value={kpis?.leadTimeMedio ? `${kpis.leadTimeMedio}d` : '0d'}
+            trend="Fornecedores"
+            icon={Clock}
+            color="primary"
+            desc="Geral dos fornecedores"
+            href="/dashboard/lead-time"
+          />
+          <KPIItem
+            title="Lotes Próx. Vencimento"
+            value={kpis?.lotesVencimentoProximo?.toString() || '0'}
+            trend={kpis && kpis.lotesVencimentoProximo > 0 ? 'Atenção' : 'OK'}
+            icon={Package}
+            color={kpis && kpis.lotesVencimentoProximo > 0 ? 'warning' : 'success'}
+            desc="Vencimento em menos de 90 dias"
+            href="/dashboard/estoque"
+          />
+        </div>
+      </div>
+
+      {/* KPI GRID — Cuidado ao Paciente */}
+      <div>
+        <p className="text-xs text-slate-400 uppercase tracking-wider font-bold mb-2">Cuidado ao Paciente</p>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          <KPIItem
+            title="Pacientes Ativos"
+            value={kpis?.totalPacientes?.toString() || '0'}
+            trend="Cadastrados"
+            icon={Users}
+            color="success"
+            desc="No sistema"
+            href="/dashboard/pacientes"
+          />
+          <KPIItem
+            title="Pendentes / Fila"
+            value={kpis?.entregasAtivas?.toString() || '0'}
+            trend="Aguardando entrega"
+            icon={ClipboardList}
+            color="warning"
+            desc="Receitas aguardando entrega"
+            href="/dashboard/entregas"
+          />
+          <KPIItem
+            title="Entregas Concluídas"
+            value={kpis?.entregasConcluidas?.toString() || '0'}
+            trend="No período"
+            icon={CheckCircle2}
+            color="success"
+            desc="Entregas finalizadas com sucesso"
+            href="/dashboard/entregas"
+          />
+          <KPIItem
+            title="Em Rota"
+            value={kpis?.entregasAtivas?.toString() || '0'}
+            trend="Entregadores ativos"
+            icon={Truck}
+            color="info"
+            desc="Entregadores nas ruas agora"
+            href="/dashboard/monitoramento"
+          />
+        </div>
       </div>
 
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
@@ -317,6 +365,7 @@ function KPIItem({ title, value, trend, icon: Icon, color, desc, href }: any) {
       primary: "text-blue-600 bg-blue-50 border-blue-100",
       success: "text-emerald-600 bg-emerald-50 border-emerald-100",
       info: "text-cyan-600 bg-cyan-50 border-cyan-100",
+      warning: "text-amber-600 bg-amber-50 border-amber-100",
    };
 
    const Content = (
@@ -328,7 +377,7 @@ function KPIItem({ title, value, trend, icon: Icon, color, desc, href }: any) {
             <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">{title}</p>
             <div className="flex items-baseline gap-2">
                <h3 className="text-2xl font-black text-slate-800">{value}</h3>
-               <span className={cn("text-[10px] font-black", color === 'destructive' ? 'text-red-500' : 'text-emerald-500')}>{trend}</span>
+               <span className={cn("text-[10px] font-black", color === 'destructive' ? 'text-red-500' : color === 'warning' ? 'text-amber-500' : 'text-emerald-500')}>{trend}</span>
             </div>
             <p className="text-[10px] font-bold text-slate-400 mt-1">{desc}</p>
          </div>

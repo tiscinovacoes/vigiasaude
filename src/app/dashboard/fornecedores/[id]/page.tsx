@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useParams } from "next/navigation";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -27,23 +27,26 @@ import {
 const fornecedoresData: Record<string, any> = {
   "1": {
     id: "1",
-    nome: "PharmaPrime S.A.",
+    nome: "Biofarma Ltda",
     cnpj: "12.345.678/0001-90",
     telefone: "(11) 3456-7890",
-    email: "comercial@pharmaprime.com.br",
+    email: "comercial@biofarma.com.br",
     endereco: "Av. Paulista, 1000 - São Paulo/SP",
     responsavel: "Roberto Silva",
     status: "Ativo",
     kpis: { leadTime: 12, totalCompras: 48, valorAcumulado: 485620.50, pontualidade: 92.5 },
     historicoItens: [
-      {
-        id: 1, data: "15/03/2026", medicamento: "Insulina NPH 100UI/ml", lote: "LT2024001", quantidade: 500, precoUnitario: 45.80, valorTotal: 22900.00, notaFiscal: "NF-2026-0315",
-      },
+      { id: 1, data: "15/03/2026", medicamento: "Insulina NPH 100UI/ml", lote: "LT2024001", quantidade: 500, precoUnitario: 45.80, valorTotal: 22900.00, notaFiscal: "NF-2026-0315" },
+      { id: 2, data: "10/03/2026", medicamento: "Insulina NPH 100UI/ml", lote: "LT2024002", quantidade: 300, precoUnitario: 45.80, valorTotal: 13740.00, notaFiscal: "NF-2026-0298" },
+      { id: 3, data: "05/03/2026", medicamento: "Metformina 850mg", lote: "LT2024015", quantidade: 10000, precoUnitario: 0.45, valorTotal: 4500.00, notaFiscal: "NF-2026-0285" },
+      { id: 4, data: "28/02/2026", medicamento: "Insulina NPH 100UI/ml", lote: "LT2024003", quantidade: 400, precoUnitario: 44.90, valorTotal: 17960.00, notaFiscal: "NF-2026-0256" },
+      { id: 5, data: "20/02/2026", medicamento: "Metformina 850mg", lote: "LT2024016", quantidade: 8000, precoUnitario: 0.48, valorTotal: 3840.00, notaFiscal: "NF-2026-0234" },
+      { id: 6, data: "12/02/2026", medicamento: "Glibenclamida 5mg", lote: "LT2024025", quantidade: 5000, precoUnitario: 0.35, valorTotal: 1750.00, notaFiscal: "NF-2026-0218" },
     ],
     ocorrencias: [
-      {
-        id: 1, data: "15/03/2026", tipo: "Atraso na Entrega", gravidade: "Media", descricao: "Atraso de 2 dias na entrega programada.", medicamento: "Insulina NPH 100UI/ml", lote: "LT2024001", quantidadeEsperada: 500, quantidadeRecebida: 500, responsavel: "João Santos", status: "Em Analise",
-      },
+      { id: 1, data: "15/03/2026", tipo: "Divergencia de Quantidade", gravidade: "Media", descricao: "Quantidade recebida inferior ao pedido. Diferença de 50 unidades.", medicamento: "Insulina NPH 100UI/ml", lote: "LT2024001", quantidadeEsperada: 550, quantidadeRecebida: 500, responsavel: "João Santos - Conferente CD", status: "Em Analise" },
+      { id: 2, data: "05/03/2026", tipo: "Falta de Documentacao", gravidade: "Baixa", descricao: "Certificado de análise não acompanhou a carga. Documento enviado posteriormente.", medicamento: "Metformina 850mg", lote: "LT2024015", quantidadeEsperada: 10000, quantidadeRecebida: 10000, responsavel: "Maria Oliveira - Conferente CD", status: "Resolvido" },
+      { id: 3, data: "28/02/2026", tipo: "Temperatura Inadequada", gravidade: "Alta", descricao: "Temperatura do veículo acima de 8°C durante transporte. Lote rejeitado e devolvido.", medicamento: "Insulina NPH 100UI/ml", lote: "LT2024003", quantidadeEsperada: 400, quantidadeRecebida: 0, responsavel: "Carlos Mendes - Supervisor CD", status: "Resolvido" },
     ],
   },
   "2": {
@@ -57,20 +60,23 @@ const fornecedoresData: Record<string, any> = {
     status: "Ativo",
     kpis: { leadTime: 8, totalCompras: 62, valorAcumulado: 328450.75, pontualidade: 96.8 },
     historicoItens: [
-      {
-        id: 7, data: "16/03/2026", medicamento: "Losartana 50mg", lote: "LT2024008", quantidade: 12000, precoUnitario: 0.68, valorTotal: 8160.00, notaFiscal: "NF-2026-0318",
-      },
+      { id: 7, data: "16/03/2026", medicamento: "Losartana 50mg", lote: "LT2024008", quantidade: 12000, precoUnitario: 0.68, valorTotal: 8160.00, notaFiscal: "NF-2026-0318" },
+      { id: 8, data: "11/03/2026", medicamento: "Enalapril 10mg", lote: "LT2024012", quantidade: 8000, precoUnitario: 0.52, valorTotal: 4160.00, notaFiscal: "NF-2026-0302" },
+      { id: 9, data: "06/03/2026", medicamento: "Losartana 50mg", lote: "LT2024009", quantidade: 10000, precoUnitario: 0.65, valorTotal: 6500.00, notaFiscal: "NF-2026-0289" },
+      { id: 10, data: "01/03/2026", medicamento: "Sinvastatina 20mg", lote: "LT2024020", quantidade: 15000, precoUnitario: 0.42, valorTotal: 6300.00, notaFiscal: "NF-2026-0271" },
     ],
-    ocorrencias: [],
+    ocorrencias: [
+      { id: 4, data: "11/03/2026", tipo: "Avaria", gravidade: "Baixa", descricao: "3 caixas com amassamentos leves. Produto íntegro, apenas embalagem externa danificada.", medicamento: "Enalapril 10mg", lote: "LT2024012", quantidadeEsperada: 8000, quantidadeRecebida: 8000, responsavel: "Pedro Lima - Conferente CD", status: "Resolvido" },
+    ],
   },
 };
 
-export default function FornecedorDetalhePage({ params }: { params: { id: string } }) {
+export default function FornecedorDetalhePage() {
   const router = useRouter();
+  const params = useParams();
   const [abaAtiva, setAbaAtiva] = useState<"historico" | "ocorrencias">("historico");
 
-  // Usar o id da rota ou fallback para 1 (mocking purpose for unresolved DB links if id doesnt match mock)
-  const fornecedor = fornecedoresData[params.id] || fornecedoresData["1"];
+  const fornecedor = fornecedoresData[params.id as string] || fornecedoresData["1"];
 
   const totalItens = fornecedor.historicoItens.reduce((sum: number, item: any) => sum + item.quantidade, 0);
   const ocorrenciasPendentes = fornecedor.ocorrencias.filter((o: any) => o.status === "Pendente" || o.status === "Em Analise").length;
@@ -284,6 +290,9 @@ export default function FornecedorDetalhePage({ params }: { params: { id: string
                   <div className="flex items-center gap-2 text-slate-500">
                     <BarChart3 className="w-4 h-4 text-[#1E3A8A]" /> Total de Itens: <span className="text-[#1E293B] font-black">{totalItens.toLocaleString("pt-BR")} unidades</span>
                   </div>
+                  <div className="flex items-center gap-2 text-slate-500">
+                    <DollarSign className="w-4 h-4 text-[#16A34A]" /> Valor Total: <span className="text-[#1E293B] font-black">{fornecedor.historicoItens.reduce((sum: number, item: any) => sum + item.valorTotal, 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</span>
+                  </div>
                 </div>
               </div>
               <div className="overflow-x-auto">
@@ -292,9 +301,11 @@ export default function FornecedorDetalhePage({ params }: { params: { id: string
                     <tr className="bg-white border-b border-[#E2E8F0]">
                       <th className="text-left py-3 px-4 text-[#64748B] text-[10px] uppercase tracking-widest font-bold">Data</th>
                       <th className="text-left py-3 px-4 text-[#64748B] text-[10px] uppercase tracking-widest font-bold">Medicamento</th>
-                      <th className="text-left py-3 px-4 text-[#64748B] text-[10px] uppercase tracking-widest font-bold">Lote</th>
-                      <th className="text-right py-3 px-4 text-[#64748B] text-[10px] uppercase tracking-widest font-bold">Qtd</th>
-                      <th className="text-right py-3 px-4 text-[#64748B] text-[10px] uppercase tracking-widest font-bold">Valor</th>
+                      <th className="text-left py-3 px-4 text-[#64748B] text-[10px] uppercase tracking-widest font-bold">Lote (Batch ID)</th>
+                      <th className="text-right py-3 px-4 text-[#64748B] text-[10px] uppercase tracking-widest font-bold">Quantidade</th>
+                      <th className="text-right py-3 px-4 text-[#64748B] text-[10px] uppercase tracking-widest font-bold">Preço Unit.</th>
+                      <th className="text-right py-3 px-4 text-[#64748B] text-[10px] uppercase tracking-widest font-bold">Valor Total</th>
+                      <th className="text-left py-3 px-4 text-[#64748B] text-[10px] uppercase tracking-widest font-bold">Nota Fiscal</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
@@ -304,7 +315,16 @@ export default function FornecedorDetalhePage({ params }: { params: { id: string
                         <td className="py-3 px-4 text-[#1E293B] font-bold">{item.medicamento}</td>
                         <td className="py-3 px-4 font-mono text-[#1E3A8A] font-bold">{item.lote}</td>
                         <td className="py-3 px-4 text-right font-black">{item.quantidade.toLocaleString("pt-BR")}</td>
+                        <td className="py-3 px-4 text-right text-[#64748B] font-medium">
+                          {item.precoUnitario?.toLocaleString("pt-BR", { style: "currency", currency: "BRL" }) ?? "—"}
+                        </td>
                         <td className="py-3 px-4 text-right font-medium text-emerald-600">{item.valorTotal.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</td>
+                        <td className="py-3 px-4">
+                          <div className="flex items-center gap-1 text-[#1E3A8A] text-sm">
+                            <FileText className="w-3 h-3" />
+                            {item.notaFiscal ?? "—"}
+                          </div>
+                        </td>
                       </tr>
                     ))}
                   </tbody>
@@ -362,6 +382,12 @@ export default function FornecedorDetalhePage({ params }: { params: { id: string
                           </p>
                         </div>
                       </div>
+                      {ocorrencia.responsavel && (
+                        <div className="mt-3 pt-3 border-t border-[#E2E8F0] flex items-center gap-2 text-xs text-[#64748B]">
+                          <FileText className="w-3 h-3" />
+                          <span>Responsável: <span className="font-semibold text-[#1E293B]">{ocorrencia.responsavel}</span></span>
+                        </div>
+                      )}
                     </CardContent>
                   </Card>
                 ))
