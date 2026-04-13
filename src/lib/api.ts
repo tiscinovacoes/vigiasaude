@@ -812,7 +812,7 @@ export const api = {
   ): Promise<{
     cmed: { valido: boolean; teto: number; percentual: number };
     bps: { valido: boolean | null; referencia: number | null; percentual: number | null };
-    status: 'OK' | 'ALERTA_BPS' | 'BLOQUEIO_CMED';
+    status: 'OK' | 'ALERTA_BPS' | 'ALERTA_CMED';
   }> {
     // 1. Validar CMED (banco de dados)
     const cmedResult = await this.validarPrecoCmed(medicamentoId, valorUnitario);
@@ -844,9 +844,9 @@ export const api = {
           }
         : { valido: null, referencia: null, percentual: null };
 
-    // 3. Status consolidado
+    // 3. Status consolidado — nunca bloqueia, apenas alerta
     const status = !cmed.valido
-      ? 'BLOQUEIO_CMED'
+      ? 'ALERTA_CMED'
       : bps.valido === false
       ? 'ALERTA_BPS'
       : 'OK';
@@ -864,18 +864,16 @@ export const api = {
     quantidade: number;
     valor_unitario: number;
     data_entrega_prevista?: string;
-    justificativa_cmed?: string;
-  }): Promise<{ success: boolean; error?: string }> {
+  }): Promise<{ success: boolean; error?: string; alerta?: string }> {
     try {
       const validacao = await this.validarPrecoCompleto(payload.medicamento_id, payload.valor_unitario);
 
-      // Bloqueia apenas se excede CMED E não há justificativa
-      if (validacao.status === 'BLOQUEIO_CMED' && !payload.justificativa_cmed) {
-        return {
-          success: false,
-          error: `Preço R$ ${payload.valor_unitario.toFixed(2)} excede o teto CMED de R$ ${validacao.cmed.teto.toFixed(2)} (+${validacao.cmed.percentual.toFixed(1)}%). Forneça uma justificativa para prosseguir.`,
-        };
-      }
+      // Compra sempre permitida — CMED e BPS geram alertas, nunca bloqueios
+      const alerta = validacao.status === 'ALERTA_CMED'
+        ? `⚠ Preço acima do teto CMED (R$ ${validacao.cmed.teto.toFixed(2)}) em +${validacao.cmed.percentual.toFixed(1)}%`
+        : validacao.status === 'ALERTA_BPS'
+        ? `⚠ Preço acima da referência BPS (R$ ${validacao.bps.referencia?.toFixed(2)}) em +${validacao.bps.percentual?.toFixed(1)}%`
+        : undefined;
 
       const { error } = await supabase.from('compras_registro').insert([{
         medicamento_id: payload.medicamento_id,
@@ -885,9 +883,7 @@ export const api = {
         data_solicitacao: new Date().toISOString().split('T')[0],
         data_entrega_prevista: payload.data_entrega_prevista || null,
         status: 'SOLICITADO',
-        motivo_sugestao: payload.justificativa_cmed
-          ? `JUSTIFICATIVA CMED: ${payload.justificativa_cmed}`
-          : null,
+        motivo_sugestao: alerta ?? null,
       }]);
 
       if (error) {
@@ -913,7 +909,7 @@ export const api = {
         status_conformidade: validacao.status,
       });
 
-      return { success: true };
+      return { success: true, alerta };
     } catch (err: any) {
       console.error('❌ [API Error] createCompra:', err);
       return { success: false, error: err?.message || 'Erro desconhecido' };

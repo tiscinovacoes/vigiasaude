@@ -50,7 +50,7 @@ import { cn } from '@/lib/utils';
 type ValidacaoPreco = {
   cmed: { valido: boolean; teto: number; percentual: number };
   bps: { valido: boolean | null; referencia: number | null; percentual: number | null };
-  status: 'OK' | 'ALERTA_BPS' | 'BLOQUEIO_CMED';
+  status: 'OK' | 'ALERTA_BPS' | 'ALERTA_CMED';
 } | null;
 
 function EstoqueContent() {
@@ -520,7 +520,7 @@ function EstoqueContent() {
                       step="0.01"
                       placeholder="0.00"
                       className={cn(
-                        validacaoEntrada?.status === 'BLOQUEIO_CMED' && 'border-red-400 focus-visible:ring-red-400',
+                        validacaoEntrada?.status === 'ALERTA_CMED' && 'border-red-400 focus-visible:ring-red-400',
                         validacaoEntrada?.status === 'ALERTA_BPS' && 'border-amber-400 focus-visible:ring-amber-400',
                         validacaoEntrada?.status === 'OK' && 'border-emerald-400 focus-visible:ring-emerald-400',
                       )}
@@ -584,14 +584,14 @@ function EstoqueContent() {
                  onClick={handleEntrada}
                  className={cn(
                    'w-full font-black h-12 rounded-xl mt-4 text-white',
-                   validacaoEntrada?.status === 'BLOQUEIO_CMED'
+                   validacaoEntrada?.status === 'ALERTA_CMED'
                      ? 'bg-red-600 hover:bg-red-700'
                      : validacaoEntrada?.status === 'ALERTA_BPS'
                      ? 'bg-amber-600 hover:bg-amber-700'
                      : 'bg-emerald-600 hover:bg-emerald-700'
                  )}
                >
-                 {validacaoEntrada?.status === 'BLOQUEIO_CMED'
+                 {validacaoEntrada?.status === 'ALERTA_CMED'
                    ? 'Registrar Entrada (acima do teto CMED!)'
                    : validacaoEntrada?.status === 'ALERTA_BPS'
                    ? 'Registrar Entrada (acima do BPS)'

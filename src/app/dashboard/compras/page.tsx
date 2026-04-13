@@ -36,7 +36,7 @@ const statusConfig: Record<string, { bg: string; text: string; border: string }>
 type ValidacaoPreco = {
   cmed: { valido: boolean; teto: number; percentual: number };
   bps: { valido: boolean | null; referencia: number | null; percentual: number | null };
-  status: 'OK' | 'ALERTA_BPS' | 'BLOQUEIO_CMED';
+  status: 'OK' | 'ALERTA_BPS' | 'ALERTA_CMED';
 } | null;
 
 function PainelConformidade({ validacao, valorUnitario }: {
@@ -151,7 +151,6 @@ export default function ComprasPage() {
     quantidade: '',
     valor_unitario: '',
     data_entrega_prevista: '',
-    justificativa_cmed: '',
   });
 
   useEffect(() => {
@@ -226,10 +225,6 @@ export default function ComprasPage() {
       toast.error('Preencha todos os campos obrigatórios');
       return;
     }
-    if (validacao?.status === 'BLOQUEIO_CMED' && !form.justificativa_cmed.trim()) {
-      toast.error('Forneça uma justificativa para prosseguir com preço acima do teto CMED');
-      return;
-    }
     setSubmitting(true);
     const res = await api.createCompra({
       medicamento_id: form.medicamento_id,
@@ -237,14 +232,17 @@ export default function ComprasPage() {
       quantidade: Number(form.quantidade),
       valor_unitario: parseFloat(form.valor_unitario.replace(',', '.')),
       data_entrega_prevista: form.data_entrega_prevista || undefined,
-      justificativa_cmed: form.justificativa_cmed || undefined,
     });
     setSubmitting(false);
 
     if (res.success) {
-      toast.success('Compra registrada com sucesso!');
+      if (res.alerta) {
+        toast.warning(res.alerta, { duration: 6000 });
+      } else {
+        toast.success('Compra registrada com sucesso!');
+      }
       setShowModal(false);
-      setForm({ medicamento_id: '', fornecedor_id: '', quantidade: '', valor_unitario: '', data_entrega_prevista: '', justificativa_cmed: '' });
+      setForm({ medicamento_id: '', fornecedor_id: '', quantidade: '', valor_unitario: '', data_entrega_prevista: '' });
       setValidacao(null);
       fetchData();
     } else {
@@ -273,7 +271,6 @@ export default function ComprasPage() {
   }
 
   const valorFloat = parseFloat(form.valor_unitario.replace(',', '.')) || 0;
-  const bloqueadoCmed = validacao?.status === 'BLOQUEIO_CMED' && !form.justificativa_cmed.trim();
 
   return (
     <div className="p-8 space-y-6 bg-slate-50 min-h-full pb-20">
@@ -491,7 +488,7 @@ export default function ComprasPage() {
                     value={form.valor_unitario}
                     onChange={e => handleFormChange('valor_unitario', e.target.value)}
                     className={cn(
-                      validacao?.status === 'BLOQUEIO_CMED' && 'border-red-400 focus-visible:ring-red-400',
+                      validacao?.status === 'ALERTA_CMED' && 'border-red-400 focus-visible:ring-red-400',
                       validacao?.status === 'ALERTA_BPS' && 'border-amber-400 focus-visible:ring-amber-400',
                       validacao?.status === 'OK' && 'border-emerald-400 focus-visible:ring-emerald-400',
                     )}
@@ -501,22 +498,6 @@ export default function ComprasPage() {
 
               {/* Painel de conformidade em tempo real */}
               <PainelConformidade validacao={validacao} valorUnitario={valorFloat} />
-
-              {/* Justificativa se CMED bloqueado */}
-              {validacao?.status === 'BLOQUEIO_CMED' && (
-                <div className="animate-in fade-in slide-in-from-top-2 duration-200">
-                  <label className="text-[10px] font-black text-red-600 uppercase mb-1.5 block">
-                    Justificativa (obrigatória para prosseguir) *
-                  </label>
-                  <textarea
-                    rows={2}
-                    className="w-full text-sm rounded-xl border border-red-300 bg-red-50 p-3 outline-none focus:ring-2 focus:ring-red-400 resize-none placeholder:text-red-300"
-                    placeholder="Ex: Único fornecedor disponível na licitação emergencial..."
-                    value={form.justificativa_cmed}
-                    onChange={e => setForm(f => ({ ...f, justificativa_cmed: e.target.value }))}
-                  />
-                </div>
-              )}
 
               {/* Data prevista */}
               <div>
@@ -533,11 +514,11 @@ export default function ComprasPage() {
               {/* Submit */}
               <Button
                 onClick={handleSubmit}
-                disabled={submitting || bloqueadoCmed || !form.medicamento_id || !form.fornecedor_id}
+                disabled={submitting || !form.medicamento_id || !form.fornecedor_id}
                 className={cn(
                   'w-full h-12 rounded-xl font-black text-white mt-2',
-                  validacao?.status === 'BLOQUEIO_CMED' && !form.justificativa_cmed
-                    ? 'bg-slate-300 cursor-not-allowed'
+                  validacao?.status === 'ALERTA_CMED'
+                    ? 'bg-orange-500 hover:bg-orange-600'
                     : validacao?.status === 'ALERTA_BPS'
                     ? 'bg-amber-600 hover:bg-amber-700'
                     : 'bg-[#1E3A8A] hover:bg-[#1E3A8A]/90'
@@ -545,10 +526,10 @@ export default function ComprasPage() {
               >
                 {submitting ? (
                   <Loader2 className="animate-spin mx-auto" size={18} />
-                ) : validacao?.status === 'BLOQUEIO_CMED' && !form.justificativa_cmed ? (
-                  'Justifique o preço para continuar'
+                ) : validacao?.status === 'ALERTA_CMED' ? (
+                  '⚠ Registrar Compra (acima do teto CMED)'
                 ) : validacao?.status === 'ALERTA_BPS' ? (
-                  'Registrar Compra (acima do BPS)'
+                  '⚠ Registrar Compra (acima do BPS)'
                 ) : (
                   'Registrar Compra'
                 )}
