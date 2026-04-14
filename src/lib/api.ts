@@ -498,7 +498,7 @@ export const api = {
     try {
       const { data, error } = await supabase
         .from('fornecedores')
-        .insert([{ ...fornecedor, lead_time_medio: 0 }])
+        .insert([fornecedor])
         .select()
         .single();
       if (error) throw error;
