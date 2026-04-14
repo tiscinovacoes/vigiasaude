@@ -57,6 +57,7 @@ function EstoqueContent() {
   const router = useRouter();
   const [loading, setLoading] = useState(true);
   const [medicamentos, setMedicamentos] = useState<Medicamento[]>([]);
+  const [rupturaMap, setRupturaMap] = useState<Record<string, { dias: number; status: string }>>({});
   const [busca, setBusca] = useState("");
   const [expandedMeds, setExpandedMeds] = useState<Set<string>>(new Set());
   
@@ -112,8 +113,16 @@ function EstoqueContent() {
   async function loadData() {
     setLoading(true);
     try {
-      const data = await api.getEstoqueBase();
+      const [data, ruptura] = await Promise.all([
+        api.getEstoqueBase(),
+        api.getRiscoRuptura().catch(() => []),
+      ]);
       setMedicamentos(data);
+      const map: Record<string, { dias: number; status: string }> = {};
+      ruptura.forEach(r => {
+        map[r.medicamento_id] = { dias: r.dias_restantes_estoque, status: r.status_logistico };
+      });
+      setRupturaMap(map);
     } catch (err) {
       console.error(err);
     } finally {
@@ -264,70 +273,130 @@ function EstoqueContent() {
                 <thead>
                   <tr className="bg-slate-50 border-b border-slate-100">
                     <th className="w-10"></th>
-                    <th className="text-left py-4 px-4 text-slate-400 text-[10px] font-black uppercase tracking-widest">Medicamento / SKU</th>
-                    <th className="text-right py-4 px-4 text-slate-400 text-[10px] font-black uppercase tracking-widest">Consolidado</th>
-                    <th className="text-right py-4 px-4 text-slate-400 text-[10px] font-black uppercase tracking-widest">Estoque Mín.</th>
-                    <th className="text-right py-4 px-4 text-slate-400 text-[10px] font-black uppercase tracking-widest">CMED Unit.</th>
+                    <th className="text-left py-4 px-4 text-slate-400 text-[10px] font-black uppercase tracking-widest">Medicamento</th>
+                    <th className="text-left py-4 px-4 text-slate-400 text-[10px] font-black uppercase tracking-widest">Lote</th>
+                    <th className="text-left py-4 px-4 text-slate-400 text-[10px] font-black uppercase tracking-widest">Validade</th>
+                    <th className="text-right py-4 px-4 text-slate-400 text-[10px] font-black uppercase tracking-widest">Qtd. Atual</th>
+                    <th className="text-right py-4 px-4 text-slate-400 text-[10px] font-black uppercase tracking-widest">Est. Mínimo</th>
+                    <th className="text-right py-4 px-4 text-slate-400 text-[10px] font-black uppercase tracking-widest">Dias Cobertura</th>
                     <th className="text-center py-4 px-4 text-slate-400 text-[10px] font-black uppercase tracking-widest">Status</th>
                   </tr>
                 </thead>
                 <tbody>
                   {filtered.map((med) => {
-                    const totalDisp = (med.lotes || []).reduce((s, l) => s + (l.quantidade_disponivel || 0), 0);
+                    const lotesAtivos = (med.lotes || []).filter((l: any) => l.quantidade_disponivel > 0);
+                    const lotesOrdenados = [...lotesAtivos].sort((a: any, b: any) =>
+                      new Date(a.data_validade).getTime() - new Date(b.data_validade).getTime()
+                    );
+                    const totalDisp = (med.lotes || []).reduce((s: number, l: any) => s + (l.quantidade_disponivel || 0), 0);
+                    const totalLotes = (med.lotes || []).length;
                     const isExpanded = expandedMeds.has(med.id);
-                    const isCritico = totalDisp < med.estoque_minimo;
+                    const hasMultiple = lotesOrdenados.length > 1;
+                    const fefoLote = lotesOrdenados[0];
+                    const ruptura = rupturaMap[med.id];
+                    const diasCobertura = ruptura?.dias ?? null;
+
+                    // Status com 3 níveis como no Figma
+                    const statusLogistico = ruptura?.status ?? '';
+                    const isCritico = totalDisp < med.estoque_minimo || statusLogistico.includes('CRÍTICO') || (diasCobertura !== null && diasCobertura <= 7);
+                    const isAtencao = !isCritico && (statusLogistico.includes('ALERTA') || (diasCobertura !== null && diasCobertura <= 30) || totalDisp < med.estoque_minimo * 1.5);
+
+                    const statusBadge = isCritico
+                      ? { label: 'Crítico', cls: 'bg-red-50 text-red-700 border border-red-200' }
+                      : isAtencao
+                      ? { label: 'Atenção', cls: 'bg-amber-50 text-amber-700 border border-amber-200' }
+                      : { label: 'Normal', cls: 'bg-emerald-50 text-emerald-700 border border-emerald-200' };
 
                     return (
                       <Fragment key={med.id}>
-                        <tr className={`border-b border-slate-50 hover:bg-slate-50/50 transition-colors cursor-pointer ${isCritico ? 'bg-red-50/20' : ''}`} onClick={() => toggleExpand(med.id)}>
+                        <tr
+                          className={cn('border-b border-slate-50 hover:bg-slate-50/50 transition-colors cursor-pointer',
+                            isCritico && 'bg-red-50/20'
+                          )}
+                          onClick={() => toggleExpand(med.id)}
+                        >
                           <td className="py-4 px-4 text-center">
-                            {isExpanded ? <ChevronDown size={14} className="text-blue-600"/> : <ChevronRight size={14} className="text-slate-400"/>}
+                            {totalLotes > 1
+                              ? isExpanded
+                                ? <ChevronDown size={14} className="text-blue-600 mx-auto"/>
+                                : <ChevronRight size={14} className="text-slate-400 mx-auto"/>
+                              : null
+                            }
                           </td>
                           <td className="py-4 px-4">
-                            <p className="font-bold text-slate-900 leading-tight">{med.nome}</p>
-                            <p className="text-[10px] font-mono text-slate-400 mt-0.5">{med.dosagem || '—'}</p>
+                            <div className="flex items-center gap-2">
+                              <span className="font-bold text-slate-900 leading-tight">{med.nome}</span>
+                              {totalLotes > 1 && (
+                                <Badge className="bg-blue-50 text-blue-600 border-none shadow-none text-[9px] font-black px-1.5">
+                                  {totalLotes} lotes
+                                </Badge>
+                              )}
+                            </div>
+                          </td>
+                          <td className="py-4 px-4 text-sm text-slate-500 font-mono">
+                            {hasMultiple ? '—' : fefoLote ? fefoLote.codigo_lote_fabricante : '—'}
+                          </td>
+                          <td className="py-4 px-4 text-sm text-slate-500">
+                            {hasMultiple ? '—' : fefoLote?.data_validade
+                              ? new Date(fefoLote.data_validade).toLocaleDateString('pt-BR')
+                              : '—'
+                            }
                           </td>
                           <td className="py-4 px-4 text-right">
-                             <div className="flex flex-col items-end">
-                                <span className={`text-sm font-black ${isCritico ? 'text-red-600' : 'text-slate-900'}`}>{totalDisp} un</span>
-                                <span className="text-[9px] font-bold text-slate-400 uppercase">Total Em Lotes</span>
-                             </div>
+                            <span className={cn('text-sm font-black', isCritico ? 'text-red-600' : 'text-slate-900')}>
+                              {totalDisp}
+                            </span>
                           </td>
-                          <td className="py-4 px-4 text-right font-mono text-xs text-slate-500">{med.estoque_minimo}</td>
-                          <td className="py-4 px-4 text-right font-mono text-xs text-blue-600">R$ {med.preco_teto_cmed?.toFixed(2)}</td>
+                          <td className="py-4 px-4 text-right text-sm text-slate-500 font-mono">{med.estoque_minimo}</td>
+                          <td className="py-4 px-4 text-right">
+                            {diasCobertura !== null ? (
+                              <span className={cn('text-sm font-black',
+                                diasCobertura <= 7 ? 'text-red-600' : diasCobertura <= 30 ? 'text-amber-600' : 'text-slate-700'
+                              )}>
+                                {diasCobertura}
+                              </span>
+                            ) : (
+                              <span className="text-sm text-slate-300">—</span>
+                            )}
+                          </td>
                           <td className="py-4 px-4 text-center">
-                             <Badge className={`${isCritico ? 'bg-red-50 text-red-700' : 'bg-emerald-50 text-emerald-700'} border-none shadow-none text-[9px] font-black uppercase`}>
-                                {isCritico ? 'Reabastecer' : 'Normal'}
-                             </Badge>
+                            <Badge className={cn('shadow-none text-[9px] font-black uppercase px-2 py-0.5', statusBadge.cls)}>
+                              {isCritico && <AlertTriangle size={9} className="inline mr-1" />}
+                              {statusBadge.label}
+                            </Badge>
                           </td>
                         </tr>
 
-                        {isExpanded && med.lotes?.map((l: any) => (
-                           <tr key={l.id} className="bg-slate-50/50 border-b border-slate-100">
-                              <td colSpan={2} className="py-3 px-12">
-                                 <div className="flex items-center gap-2">
-                                    <Layers size={12} className="text-blue-400"/>
-                                    <span className="text-xs font-bold text-slate-600">Lote: {l.codigo_lote_fabricante}</span>
-                                    <Badge variant="outline" className="text-[9px] font-black tracking-widest px-1 py-0 h-4 border-slate-200 text-slate-400 uppercase">
-                                       Validade: {new Date(l.data_validade).toLocaleDateString('pt-BR')}
-                                    </Badge>
-                                 </div>
-                              </td>
-                              <td className="py-3 px-4 text-right">
-                                 <span className="text-xs font-black text-slate-700">{l.quantidade_disponivel} un</span>
-                              </td>
-                              <td colSpan={2} className="py-3 px-4">
-                                 <div className="flex items-center justify-end gap-2">
-                                    <span className="text-[10px] text-slate-400 font-medium">Custo Unit:</span>
-                                    <span className={`text-[10px] font-mono font-bold ${(l.custo_unitario ?? 0) > med.preco_teto_cmed ? 'text-red-500 animate-pulse' : 'text-slate-600'}`}>
-                                       R$ {l.custo_unitario?.toFixed(2)}
-                                    </span>
-                                 </div>
-                              </td>
-                              <td className="text-center">
-                                 <Badge className="bg-white border border-slate-200 text-slate-400 text-[8px] font-black uppercase">Individual</Badge>
-                              </td>
-                           </tr>
+                        {isExpanded && (med.lotes || []).sort((a: any, b: any) =>
+                          new Date(a.data_validade).getTime() - new Date(b.data_validade).getTime()
+                        ).map((l: any) => (
+                          <tr key={l.id} className="bg-slate-50/50 border-b border-slate-100">
+                            <td></td>
+                            <td className="py-3 px-4">
+                              <div className="flex items-center gap-1.5">
+                                <Layers size={11} className="text-blue-400 shrink-0"/>
+                                <span className="text-xs text-slate-500 font-medium">Lote individual</span>
+                              </div>
+                            </td>
+                            <td className="py-3 px-4 text-xs font-mono text-slate-600 font-bold">{l.codigo_lote_fabricante}</td>
+                            <td className="py-3 px-4 text-xs text-slate-600">
+                              {l.data_validade ? new Date(l.data_validade).toLocaleDateString('pt-BR') : '—'}
+                            </td>
+                            <td className="py-3 px-4 text-right text-xs font-black text-slate-700">{l.quantidade_disponivel} un</td>
+                            <td className="py-3 px-4 text-right text-xs text-slate-400">—</td>
+                            <td className="py-3 px-4 text-right">
+                              <span className={cn('text-[10px] font-mono font-bold',
+                                (l.custo_unitario ?? 0) > med.preco_teto_cmed ? 'text-red-500' : 'text-slate-500'
+                              )}>
+                                R$ {l.custo_unitario?.toFixed(2) ?? '—'}
+                              </span>
+                            </td>
+                            <td className="py-3 px-4 text-center">
+                              <Badge className="bg-white border border-slate-200 text-slate-400 text-[8px] font-black uppercase shadow-none">
+                                {l.status || 'ATIVO'}
+                              </Badge>
+                            </td>
+                          </tr>
                         ))}
                       </Fragment>
                     );
