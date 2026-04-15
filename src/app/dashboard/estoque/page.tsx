@@ -1,6 +1,7 @@
 'use client';
 
-import { Suspense, useState, useEffect, Fragment, useCallback } from 'react';
+import { Suspense, useState, useEffect, Fragment, useCallback, useMemo, useRef } from 'react';
+import { useRouter } from 'next/navigation';
 import {
   ArrowLeft,
   AlertTriangle,
@@ -22,6 +23,19 @@ import {
   ShieldAlert,
   CheckCircle2,
   Info,
+  Timer,
+  Shield,
+  Keyboard,
+  Hash,
+  Command,
+  FileText,
+  PackagePlus,
+  ClipboardList,
+  ScanBarcode,
+  ArrowLeftCircle,
+  User,
+  Building2,
+  CalendarClock,
 } from 'lucide-react';
 import { 
   Table, 
@@ -42,8 +56,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { api, Medicamento, Lote } from '@/lib/api';
-import { useRouter } from 'next/navigation';
+import { api, recallAPI, Medicamento, Lote } from '@/lib/api';
 import { toast } from "sonner";
 import { cn } from '@/lib/utils';
 
@@ -65,10 +78,22 @@ function EstoqueContent() {
   const [showNovoMedicamento, setShowNovoMedicamento] = useState(false);
   const [showNovaEntrada, setShowNovaEntrada] = useState(false);
   const [showRegistrarSaida, setShowRegistrarSaida] = useState(false);
+  const [showCommandPalette, setShowCommandPalette] = useState(false);
+  const [showAlertaSeguranca, setShowAlertaSeguranca] = useState(false);
+  const cmdInputRef = useRef<HTMLInputElement>(null);
+  const [cmdBusca, setCmdBusca] = useState('');
+  const [serialMode, setSerialMode] = useState(false);
+  const [serialLoading, setSerialLoading] = useState(false);
+  const [serialResult, setSerialResult] = useState<{
+    serial_number: string; status: string; lote_codigo: string;
+    data_validade: string; custo_unitario: number; medicamento_nome: string;
+    fornecedor_nome: string | null; paciente_cpf: string | null;
+    paciente_nome: string | null; data_dispensacao: string | null;
+  } | null | 'NOT_FOUND'>(null);
   
   // States para Formulários
   const [formMedicamento, setFormMedicamento] = useState({
-    nome: '', dosagem: '', estoque_minimo: '', preco_teto_cmed: ''
+    nome: '', dosagem: '', preco_teto_cmed: ''
   });
   const [suggestoes, setSuggestoes] = useState<Medicamento[]>([]);
   const [suggestoesCmed, setSuggestoesCmed] = useState<{ produto: string; apresentacao: string | null; substancia: string | null; laboratorio: string | null; pmc_17: number | null; pf_17: number | null; classe_terapeutica: string | null }[]>([]);
@@ -79,7 +104,7 @@ function EstoqueContent() {
     med_id: '', lote: '', validade: '', qtd: '', preco: '', fornecedor_id: ''
   });
   const [formSaida, setFormSaida] = useState({
-    lote_id: '', qtd: '', motivo: 'Dispensão Manual', destino: ''
+    lote_id: '', qtd: '', motivo: 'Dispensação Manual', destino: '', justificativa_fefo: ''
   });
   const [validacaoEntrada, setValidacaoEntrada] = useState<ValidacaoPreco>(null);
   const [validando, setValidando] = useState(false);
@@ -91,12 +116,79 @@ function EstoqueContent() {
   const [showSuggestoesEntrada, setShowSuggestoesEntrada] = useState(false);
   const [entradaMedNome, setEntradaMedNome] = useState('');
 
+  // States para Saída FEFO-aware
+  const [saidaMedId, setSaidaMedId] = useState('');
+  const [saidaBuscaMed, setSaidaBuscaMed] = useState('');
+  const saidaInputRef = useRef<HTMLInputElement>(null);
+
   useEffect(() => {
     loadData();
     api.getFornecedores().then(list =>
       setFornecedores(list.map(f => ({ id: f.id, razao_social: f.razao_social })))
     ).catch(() => {});
   }, []);
+
+  // Ctrl+K Command Palette shortcut
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+        e.preventDefault();
+        setShowCommandPalette(prev => !prev);
+        setCmdBusca('');
+      }
+      if (e.key === 'Escape') {
+        setShowCommandPalette(false);
+      }
+    };
+    document.addEventListener('keydown', handler);
+    return () => document.removeEventListener('keydown', handler);
+  }, []);
+
+  // Focus command palette input when opened
+  useEffect(() => {
+    if (showCommandPalette && cmdInputRef.current) {
+      setTimeout(() => cmdInputRef.current?.focus(), 50);
+    }
+  }, [showCommandPalette]);
+
+  // FEFO lot computation for the selected medication on Saída
+  const saidaMed = useMemo(() => medicamentos.find(m => m.id === saidaMedId), [medicamentos, saidaMedId]);
+  const lotesFefo = useMemo(() => {
+    if (!saidaMed?.lotes) return [];
+    return [...saidaMed.lotes]
+      .filter(l => l.quantidade_disponivel > 0)
+      .sort((a, b) => new Date(a.data_validade).getTime() - new Date(b.data_validade).getTime());
+  }, [saidaMed]);
+  const fefoLoteId = lotesFefo.length > 0 ? lotesFefo[0].id : null;
+  const isFefoViolation = formSaida.lote_id && fefoLoteId && formSaida.lote_id !== fefoLoteId;
+
+  // Command palette actions
+  const handleSerialSearch = useCallback(async (serial: string) => {
+    const trimmed = serial.trim();
+    if (!trimmed) return;
+    setSerialLoading(true);
+    setSerialResult(null);
+    try {
+      const result = await recallAPI.rastrearPorSerial(trimmed);
+      setSerialResult(result ?? 'NOT_FOUND');
+    } catch {
+      setSerialResult('NOT_FOUND');
+    } finally {
+      setSerialLoading(false);
+    }
+  }, []);
+
+  const commandActions = useMemo(() => [
+    { id: 'rastrear-sn', label: 'Rastrear S/N', desc: 'Rastrear serial number de unidade', icon: ScanBarcode, action: () => { setSerialMode(true); setSerialResult(null); setCmdBusca(''); setTimeout(() => cmdInputRef.current?.focus(), 50); } },
+    { id: 'novo-med', label: 'Novo Medicamento', desc: 'Cadastrar um novo medicamento', icon: Plus, action: () => { setShowNovoMedicamento(true); setShowCommandPalette(false); } },
+    { id: 'nova-entrada', label: 'Nova Entrada', desc: 'Registrar entrada de lote', icon: PackagePlus, action: () => { setShowNovaEntrada(true); setShowCommandPalette(false); } },
+    { id: 'reg-saida', label: 'Registrar Saída', desc: 'Baixa manual de lote (FEFO)', icon: ArrowDownToLine, action: () => { setShowRegistrarSaida(true); setShowCommandPalette(false); } },
+    { id: 'buscar', label: 'Buscar Medicamento', desc: 'Pesquisar no estoque', icon: Search, action: () => { document.querySelector<HTMLInputElement>('[placeholder*="Pesquisar"]')?.focus(); setShowCommandPalette(false); } },
+  ], []);
+  const filteredCommands = commandActions.filter(a =>
+    a.label.toLowerCase().includes(cmdBusca.toLowerCase()) ||
+    a.desc.toLowerCase().includes(cmdBusca.toLowerCase())
+  );
 
   const validarPrecoEntrada = useCallback(async (medId: string, preco: string) => {
     const v = parseFloat(preco.replace(',', '.'));
@@ -142,14 +234,14 @@ function EstoqueContent() {
   );
 
   async function handleNovoMedicamento() {
-    if (!formMedicamento.nome || !formMedicamento.estoque_minimo || !formMedicamento.preco_teto_cmed) {
-      toast.error("Preencha os campos obrigatórios (Nome, Mínimo e Preço Teto)");
+    if (!formMedicamento.nome || !formMedicamento.preco_teto_cmed) {
+      toast.error("Preencha os campos obrigatórios (Nome e Preço Teto)");
       return;
     }
     const res = await api.createMedicamento({
       nome: formMedicamento.nome,
       dosagem: formMedicamento.dosagem || undefined,
-      estoque_minimo: Number(formMedicamento.estoque_minimo),
+      estoque_minimo: 0,
       preco_teto_cmed: Number(formMedicamento.preco_teto_cmed),
     });
 
@@ -157,7 +249,7 @@ function EstoqueContent() {
       toast.success("Medicamento cadastrado com sucesso!");
       setShowNovoMedicamento(false);
       setSuggestoes([]); setMedExistente(null);
-      setFormMedicamento({ nome: '', dosagem: '', estoque_minimo: '', preco_teto_cmed: '' });
+      setFormMedicamento({ nome: '', dosagem: '', preco_teto_cmed: '' });
       loadData();
     } else {
       toast.error("Erro ao cadastrar: " + res.error);
@@ -193,19 +285,35 @@ function EstoqueContent() {
 
   async function handleSaida() {
     if (!formSaida.lote_id || !formSaida.qtd) {
-      toast.error("Preencha todos os campos");
+      toast.error("Preencha todos os campos obrigatórios");
       return;
     }
+    if (isFefoViolation && !formSaida.justificativa_fefo.trim()) {
+      toast.error("Justificativa obrigatória ao pular a ordem FEFO");
+      return;
+    }
+    // Show security confirmation modal
+    setShowAlertaSeguranca(true);
+  }
+
+  async function confirmarSaida() {
+    setShowAlertaSeguranca(false);
+    const motivo = isFefoViolation
+      ? `${formSaida.motivo} [FEFO OVERRIDE: ${formSaida.justificativa_fefo}]`
+      : formSaida.motivo;
     const res = await api.registrarSaida({
       lote_id: formSaida.lote_id,
       quantidade: Number(formSaida.qtd),
-      motivo: formSaida.motivo,
+      motivo,
       destino: formSaida.destino
     });
 
     if (res.success) {
-      toast.success("Baixa de estoque concluída.");
+      toast.success("Baixa de estoque concluída com sucesso.");
       setShowRegistrarSaida(false);
+      setFormSaida({ lote_id: '', qtd: '', motivo: 'Dispensação Manual', destino: '', justificativa_fefo: '' });
+      setSaidaMedId('');
+      setSaidaBuscaMed('');
       loadData();
     } else {
       toast.error("Erro: " + res.error);
@@ -295,13 +403,16 @@ function EstoqueContent() {
                     const fefoLote = lotesOrdenados[0];
                     const ruptura = rupturaMap[med.id];
                     const diasCobertura = ruptura?.dias ?? null;
-
-                    // Status com 3 níveis como no Figma
                     const statusLogistico = ruptura?.status ?? '';
-                    const isCritico = totalDisp < med.estoque_minimo || statusLogistico.includes('CRÍTICO') || (diasCobertura !== null && diasCobertura <= 7);
-                    const isAtencao = !isCritico && (statusLogistico.includes('ALERTA') || (diasCobertura !== null && diasCobertura <= 30) || totalDisp < med.estoque_minimo * 1.5);
+                    const semConsumo = statusLogistico === 'SEM_CONSUMO' || med.estoque_minimo === 0;
 
-                    const statusBadge = isCritico
+                    // Status derivado direto da view (já considera lead time)
+                    const isCritico = !semConsumo && (statusLogistico === 'CRITICO' || (!statusLogistico && totalDisp < med.estoque_minimo));
+                    const isAtencao = !semConsumo && !isCritico && statusLogistico === 'ATENCAO';
+
+                    const statusBadge = semConsumo
+                      ? { label: 'Sem prescrição', cls: 'bg-slate-100 text-slate-500 border border-slate-200' }
+                      : isCritico
                       ? { label: 'Crítico', cls: 'bg-red-50 text-red-700 border border-red-200' }
                       : isAtencao
                       ? { label: 'Atenção', cls: 'bg-amber-50 text-amber-700 border border-amber-200' }
@@ -311,9 +422,12 @@ function EstoqueContent() {
                       <Fragment key={med.id}>
                         <tr
                           className={cn('border-b border-slate-50 hover:bg-slate-50/50 transition-colors cursor-pointer',
-                            isCritico && 'bg-red-50/20'
+                            !semConsumo && isCritico && 'bg-red-50/20'
                           )}
-                          onClick={() => toggleExpand(med.id)}
+                          onClick={() => {
+                            toggleExpand(med.id);
+                            router.push(`/dashboard/estoque/${med.id}`);
+                          }}
                         >
                           <td className="py-4 px-4 text-center">
                             {totalLotes > 1
@@ -349,11 +463,16 @@ function EstoqueContent() {
                           </td>
                           <td className="py-4 px-4 text-right text-sm text-slate-500 font-mono">{med.estoque_minimo}</td>
                           <td className="py-4 px-4 text-right">
-                            {diasCobertura !== null ? (
-                              <span className={cn('text-sm font-black',
-                                diasCobertura <= 7 ? 'text-red-600' : diasCobertura <= 30 ? 'text-amber-600' : 'text-slate-700'
-                              )}>
-                                {diasCobertura}
+                            {semConsumo ? (
+                              <span className="text-sm text-slate-300">—</span>
+                            ) : diasCobertura !== null ? (
+                              <span
+                                title="Dias de cobertura já descontado o lead time de entrega do fornecedor"
+                                className={cn('text-sm font-black',
+                                  diasCobertura <= 0 ? 'text-red-600' : diasCobertura <= 30 ? 'text-amber-600' : 'text-slate-700'
+                                )}
+                              >
+                                {diasCobertura}d
                               </span>
                             ) : (
                               <span className="text-sm text-slate-300">—</span>
@@ -481,7 +600,6 @@ function EstoqueContent() {
                                   setFormMedicamento({
                                     nome: m.nome,
                                     dosagem: m.dosagem || '',
-                                    estoque_minimo: String(m.estoque_minimo),
                                     preco_teto_cmed: String(m.preco_teto_cmed ?? ''),
                                   });
                                   setMedExistente(m);
@@ -511,7 +629,6 @@ function EstoqueContent() {
                                 setFormMedicamento({
                                   nome: c.produto,
                                   dosagem: c.apresentacao || '',
-                                  estoque_minimo: '',
                                   preco_teto_cmed: c.pf_17 ? String(c.pf_17) : (c.pmc_17 ? String(c.pmc_17) : ''),
                                 });
                                 setSuggestoesCmed([]);
@@ -541,18 +658,19 @@ function EstoqueContent() {
                   <Input placeholder="Ex: 500mg" value={formMedicamento.dosagem} onChange={e => setFormMedicamento({...formMedicamento, dosagem: e.target.value})} />
                </div>
 
-               <div className="grid grid-cols-2 gap-4">
+               <div className="rounded-xl bg-blue-50 border border-blue-100 px-4 py-3 flex items-start gap-3">
+                  <ShieldCheck size={16} className="text-blue-500 mt-0.5 shrink-0" />
                   <div>
-                    <label className="text-[10px] font-black text-slate-400 uppercase mb-1.5 block">Estoque Mínimo *</label>
-                    <Input type="number" placeholder="Ex: 100" value={formMedicamento.estoque_minimo} onChange={e => setFormMedicamento({...formMedicamento, estoque_minimo: e.target.value})} />
+                    <p className="text-[10px] font-black text-blue-700 uppercase mb-0.5">Estoque Mínimo</p>
+                    <p className="text-xs text-blue-600">Calculado automaticamente com base nas prescrições ativas de pacientes e hospitais.</p>
                   </div>
-                  <div>
-                    <label className="text-[10px] font-black text-slate-400 uppercase mb-1.5 block flex items-center gap-1">
-                      Preço Teto CMED (R$) *
-                      {medExistente?.preco_teto_cmed && <ShieldCheck size={10} className="text-blue-500" />}
-                    </label>
-                    <Input type="number" step="0.01" placeholder="0.00" value={formMedicamento.preco_teto_cmed} onChange={e => setFormMedicamento({...formMedicamento, preco_teto_cmed: e.target.value})} />
-                  </div>
+               </div>
+               <div>
+                  <label className="text-[10px] font-black text-slate-400 uppercase mb-1.5 block flex items-center gap-1">
+                    Preço Teto CMED (R$) *
+                    {medExistente?.preco_teto_cmed && <ShieldCheck size={10} className="text-blue-500" />}
+                  </label>
+                  <Input type="number" step="0.01" placeholder="0.00" value={formMedicamento.preco_teto_cmed} onChange={e => setFormMedicamento({...formMedicamento, preco_teto_cmed: e.target.value})} />
                </div>
                <Button onClick={handleNovoMedicamento} className="w-full bg-[#1A2B6D] hover:bg-[#121f4f] text-white font-black h-12 rounded-xl mt-4">
                   {medExistente ? 'Atualizar Cadastro' : 'Salvar Novo Medicamento'}
@@ -834,47 +952,490 @@ function EstoqueContent() {
         </div>
       )}
 
-      {/* Modal - Registrar Saída */}
+      {/* Modal - Registrar Saída (FEFO-Aware) */}
       {showRegistrarSaida && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[1001] p-4" onClick={() => setShowRegistrarSaida(false)}>
-          <Card className="w-full max-w-lg shadow-2xl bg-white border-0" onClick={e => e.stopPropagation()}>
-            <CardHeader className="border-b border-slate-100">
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[1001] p-4" onClick={() => { setShowRegistrarSaida(false); setSaidaMedId(''); setSaidaBuscaMed(''); }}>
+          <Card className="w-full max-w-2xl shadow-2xl bg-white border-0 max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+            <CardHeader className={cn('border-b', isFefoViolation ? 'border-red-200 bg-red-50/50' : 'border-slate-100')}>
                <div className="flex items-center justify-between">
-                  <CardTitle className="text-lg font-black text-slate-900 flex items-center gap-2">
-                     <ArrowDownToLine className="text-blue-600"/> BAIXA MANUAL DE LOTE
+                  <CardTitle className={cn('text-lg font-black flex items-center gap-2', isFefoViolation ? 'text-red-800' : 'text-slate-900')}>
+                     {isFefoViolation ? <Shield className="text-red-600 animate-pulse"/> : <ArrowDownToLine className="text-blue-600"/>}
+                     {isFefoViolation ? 'ATENÇÃO: FORA DA ORDEM FEFO' : 'BAIXA INTELIGENTE DE LOTE'}
                   </CardTitle>
-                  <button onClick={() => setShowRegistrarSaida(false)} className="text-slate-300 hover:text-slate-600 transition-colors"><X size={24}/></button>
+                  <button onClick={() => { setShowRegistrarSaida(false); setSaidaMedId(''); setSaidaBuscaMed(''); }} className="text-slate-300 hover:text-slate-600 transition-colors"><X size={24}/></button>
                </div>
+               {isFefoViolation && (
+                 <p className="text-[10px] font-bold text-red-600 mt-1">Você selecionou um lote que NÃO é o mais próximo do vencimento. Justificativa obrigatória.</p>
+               )}
             </CardHeader>
-            <CardContent className="p-6 space-y-4">
-               <div>
-                  <label className="text-[10px] font-black text-slate-400 uppercase mb-1.5 block">Selecionar Lote (FEFO Ativo)</label>
-                  <Select onValueChange={v => setFormSaida({...formSaida, lote_id: v})}>
-                    <SelectTrigger><SelectValue placeholder="Buscas por lote..." /></SelectTrigger>
-                    <SelectContent>
-                      {medicamentos.flatMap(m => m.lotes?.map(l => (
-                        <SelectItem key={l.id} value={l.id}>{m.nome} - Lote: {l.codigo_lote_fabricante} ({l.quantidade_disponivel} un)</SelectItem>
-                      )) || [])}
-                    </SelectContent>
-                  </Select>
-               </div>
-               <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="text-[10px] font-black text-slate-400 uppercase mb-1.5 block">Qtd para Retirada</label>
-                    <Input type="number" placeholder="0" onChange={e => setFormSaida({...formSaida, qtd: e.target.value})} />
+            <CardContent className="p-6 space-y-5">
+
+               {/* Step 1: Selecionar Medicamento */}
+               <div className="relative">
+                  <label className="text-[10px] font-black text-slate-400 uppercase mb-1.5 block">1. Selecionar Medicamento</label>
+                  <div className="relative">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                    <Input
+                      ref={saidaInputRef}
+                      placeholder="digite para buscar..."
+                      value={saidaBuscaMed}
+                      autoComplete="off"
+                      onChange={e => {
+                        setSaidaBuscaMed(e.target.value);
+                        setSaidaMedId('');
+                        setFormSaida(prev => ({ ...prev, lote_id: '' }));
+                      }}
+                      className="pl-10 h-11 bg-slate-50 border-slate-200 rounded-xl"
+                    />
                   </div>
-                  <div>
-                    <label className="text-[10px] font-black text-slate-400 uppercase mb-1.5 block">Destino / Finalidade</label>
-                    <Input placeholder="UBS, Descarte, etc" onChange={e => setFormSaida({...formSaida, destino: e.target.value})} />
+                  {saidaBuscaMed.length >= 2 && !saidaMedId && (
+                    <div className="absolute z-50 mt-1 w-full bg-white border border-slate-200 rounded-xl shadow-lg max-h-48 overflow-y-auto">
+                      {medicamentos
+                        .filter(m => m.nome.toLowerCase().includes(saidaBuscaMed.toLowerCase()) && (m.lotes || []).some(l => l.quantidade_disponivel > 0))
+                        .map(m => {
+                          const totalDisp = (m.lotes || []).reduce((s, l) => s + l.quantidade_disponivel, 0);
+                          const numLotes = (m.lotes || []).filter(l => l.quantidade_disponivel > 0).length;
+                          return (
+                            <button
+                              key={m.id}
+                              className="w-full text-left px-4 py-3 hover:bg-blue-50 flex items-center justify-between border-b border-slate-50 last:border-0 transition-colors"
+                              onClick={() => {
+                                setSaidaMedId(m.id);
+                                setSaidaBuscaMed(m.nome);
+                              }}
+                            >
+                              <div>
+                                <span className="text-sm font-bold text-slate-900">{m.nome}</span>
+                                {m.dosagem && <span className="text-xs text-slate-400 ml-1.5">{m.dosagem}</span>}
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <Badge className="bg-blue-50 text-blue-600 border-none shadow-none text-[9px] font-black">{numLotes} lote{numLotes > 1 ? 's' : ''}</Badge>
+                                <Badge className="bg-slate-100 text-slate-600 border-none shadow-none text-[9px] font-black">{totalDisp} un</Badge>
+                              </div>
+                            </button>
+                          );
+                        })}
+                      {medicamentos.filter(m => m.nome.toLowerCase().includes(saidaBuscaMed.toLowerCase()) && (m.lotes || []).some(l => l.quantidade_disponivel > 0)).length === 0 && (
+                        <div className="px-4 py-3 text-xs text-slate-400 text-center">Nenhum medicamento com estoque encontrado</div>
+                      )}
+                    </div>
+                  )}
+               </div>
+
+               {/* Step 2: Selecionar Lote com badges FEFO */}
+               {saidaMedId && lotesFefo.length > 0 && (
+                 <div>
+                   <label className="text-[10px] font-black text-slate-400 uppercase mb-1.5 block">2. Selecionar Lote (FEFO Ativo)</label>
+                   <div className="space-y-2">
+                     {lotesFefo.map((l, idx) => {
+                       const isSelected = formSaida.lote_id === l.id;
+                       const isFefo = idx === 0;
+                       const totalMedDisp = lotesFefo.reduce((s, lt) => s + lt.quantidade_disponivel, 0);
+                       const pctDisp = totalMedDisp > 0 ? Math.round((l.quantidade_disponivel / totalMedDisp) * 100) : 0;
+                       const validade = new Date(l.data_validade);
+                       const hoje = new Date();
+                       const diasParaVencer = Math.ceil((validade.getTime() - hoje.getTime()) / (1000 * 60 * 60 * 24));
+                       const isVencendo = diasParaVencer <= 30;
+                       const isVencido = diasParaVencer <= 0;
+
+                       return (
+                         <button
+                           key={l.id}
+                           onClick={() => setFormSaida(prev => ({ ...prev, lote_id: l.id, justificativa_fefo: '' }))}
+                           className={cn(
+                             'w-full text-left px-4 py-3 rounded-xl border-2 transition-all duration-200',
+                             isSelected
+                               ? isFefo
+                                 ? 'border-emerald-400 bg-emerald-50/60 ring-2 ring-emerald-200'
+                                 : 'border-red-400 bg-red-50/60 ring-2 ring-red-200'
+                               : 'border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50/50'
+                           )}
+                         >
+                           <div className="flex items-center justify-between">
+                             <div className="flex items-center gap-2">
+                               <span className="font-mono font-bold text-sm text-slate-800">{l.codigo_lote_fabricante}</span>
+                               {isFefo && (
+                                 <Badge className="bg-emerald-100 text-emerald-700 border-none shadow-none text-[8px] font-black uppercase px-1.5 animate-pulse">
+                                   <Timer size={9} className="mr-0.5"/> FEFO
+                                 </Badge>
+                               )}
+                               {isVencido ? (
+                                 <Badge className="bg-red-100 text-red-700 border-none shadow-none text-[8px] font-black uppercase px-1.5">
+                                   VENCIDO
+                                 </Badge>
+                               ) : isVencendo ? (
+                                 <Badge className="bg-amber-100 text-amber-700 border-none shadow-none text-[8px] font-black uppercase px-1.5">
+                                   {diasParaVencer}d p/ vencer
+                                 </Badge>
+                               ) : null}
+                             </div>
+                             <div className="flex items-center gap-3">
+                               <span className="text-xs text-slate-500 font-medium">
+                                 {validade.toLocaleDateString('pt-BR')}
+                               </span>
+                               <span className="text-sm font-black text-slate-800">{l.quantidade_disponivel} un</span>
+                             </div>
+                           </div>
+                           {/* Capacity bar */}
+                           <div className="mt-2 h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                             <div
+                               className={cn(
+                                 'h-full rounded-full transition-all duration-500',
+                                 isVencido ? 'bg-red-400' : isVencendo ? 'bg-amber-400' : 'bg-emerald-400'
+                               )}
+                               style={{ width: `${pctDisp}%` }}
+                             />
+                           </div>
+                           <div className="flex items-center justify-between mt-1">
+                             <span className="text-[9px] text-slate-400 font-medium">{pctDisp}% do estoque total</span>
+                             {l.custo_unitario && (
+                               <span className="text-[9px] font-mono text-slate-400">R$ {l.custo_unitario.toFixed(2)}/un</span>
+                             )}
+                           </div>
+                         </button>
+                       );
+                     })}
+                   </div>
+                 </div>
+               )}
+
+               {/* Step 3: Quantidade e Destino */}
+               {formSaida.lote_id && (
+                 <>
+                   <div className="grid grid-cols-2 gap-4">
+                     <div>
+                       <label className="text-[10px] font-black text-slate-400 uppercase mb-1.5 block">3. Qtd para Retirada *</label>
+                       <Input
+                         type="number"
+                         placeholder="0"
+                         value={formSaida.qtd}
+                         onChange={e => setFormSaida(prev => ({ ...prev, qtd: e.target.value }))}
+                         className="h-11 rounded-xl"
+                       />
+                       {formSaida.qtd && Number(formSaida.qtd) > (lotesFefo.find(l => l.id === formSaida.lote_id)?.quantidade_disponivel || 0) && (
+                         <p className="text-[10px] text-red-500 font-bold mt-1">⚠ Excede o saldo do lote</p>
+                       )}
+                     </div>
+                     <div>
+                       <label className="text-[10px] font-black text-slate-400 uppercase mb-1.5 block">Destino / Finalidade</label>
+                       <Input
+                         placeholder="UBS, Descarte, etc"
+                         value={formSaida.destino}
+                         onChange={e => setFormSaida(prev => ({ ...prev, destino: e.target.value }))}
+                         className="h-11 rounded-xl"
+                       />
+                     </div>
+                   </div>
+
+                   {/* Motivo */}
+                   <div>
+                     <label className="text-[10px] font-black text-slate-400 uppercase mb-1.5 block">Motivo</label>
+                     <Select value={formSaida.motivo} onValueChange={v => setFormSaida(prev => ({ ...prev, motivo: v }))}>
+                       <SelectTrigger className="h-11 rounded-xl"><SelectValue /></SelectTrigger>
+                       <SelectContent>
+                         <SelectItem value="Dispensação Manual">Dispensação Manual</SelectItem>
+                         <SelectItem value="Descarte / Vencido">Descarte / Vencido</SelectItem>
+                         <SelectItem value="Transferência UBS">Transferência UBS</SelectItem>
+                         <SelectItem value="Devolução Fornecedor">Devolução Fornecedor</SelectItem>
+                         <SelectItem value="Recall">Recall</SelectItem>
+                         <SelectItem value="Outro">Outro</SelectItem>
+                       </SelectContent>
+                     </Select>
+                   </div>
+                 </>
+               )}
+
+               {/* FEFO Violation Warning + Justification */}
+               {isFefoViolation && (
+                 <div className="space-y-3">
+                   <div className="p-4 bg-red-50 border-2 border-red-200 rounded-xl flex items-start gap-3 animate-in fade-in duration-200">
+                     <Shield className="text-red-600 shrink-0 mt-0.5 animate-pulse" size={20}/>
+                     <div>
+                       <p className="text-[10px] font-black text-red-800 uppercase">Violação da Ordem FEFO</p>
+                       <p className="text-xs text-red-700 font-medium leading-tight mt-0.5">
+                         O lote {lotesFefo.find(l => l.id === formSaida.lote_id)?.codigo_lote_fabricante} não é o mais próximo do vencimento.
+                         O lote FEFO correto é <strong>{lotesFefo[0]?.codigo_lote_fabricante}</strong> (vence em {new Date(lotesFefo[0]?.data_validade).toLocaleDateString('pt-BR')}).
+                       </p>
+                     </div>
+                   </div>
+                   <div>
+                     <label className="text-[10px] font-black text-red-600 uppercase mb-1.5 block flex items-center gap-1">
+                       <ClipboardList size={10}/> Justificativa Obrigatória *
+                     </label>
+                     <textarea
+                       placeholder="Ex: Lote FEFO reservado para programa especial, lote com recall parcial..."
+                       value={formSaida.justificativa_fefo}
+                       onChange={e => setFormSaida(prev => ({ ...prev, justificativa_fefo: e.target.value }))}
+                       className="w-full border-2 border-red-200 rounded-xl p-3 text-sm text-red-900 bg-red-50/50 focus:outline-none focus:ring-2 focus:ring-red-300 placeholder:text-red-300 min-h-[80px] resize-none"
+                     />
+                   </div>
+                 </div>
+               )}
+
+               {/* Audit trail warning */}
+               {formSaida.lote_id && !isFefoViolation && (
+                 <div className="p-4 bg-amber-50 border border-amber-100 rounded-xl flex items-start gap-3">
+                   <AlertTriangle className="text-amber-600 shrink-0" size={18}/>
+                   <p className="text-[10px] font-bold text-amber-900 leading-tight">ATENÇÃO: A saída manual gera uma trilha de auditoria irreversível vinculada ao seu usuário.</p>
+                 </div>
+               )}
+
+               {/* Submit button */}
+               {formSaida.lote_id && (
+                 <Button
+                   onClick={handleSaida}
+                   disabled={!formSaida.qtd || Number(formSaida.qtd) <= 0 || (!!isFefoViolation && !formSaida.justificativa_fefo.trim())}
+                   className={cn(
+                     'w-full font-black h-12 rounded-xl mt-2 text-white transition-all duration-200',
+                     isFefoViolation
+                       ? 'bg-red-600 hover:bg-red-700 disabled:bg-red-300'
+                       : 'bg-blue-900 hover:bg-black disabled:bg-slate-300'
+                   )}
+                 >
+                   {isFefoViolation ? 'Confirmar Saída (Fora do FEFO)' : 'Confirmar Baixa de Lote'}
+                 </Button>
+               )}
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
+      {/* AlertaSegurançaModal - Confirmação de Segurança */}
+      {showAlertaSeguranca && (
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-md flex items-center justify-center z-[1002] p-4">
+          <Card className={cn(
+            'w-full max-w-md shadow-2xl border-0 animate-in zoom-in-95 fade-in duration-200',
+            isFefoViolation ? 'bg-red-50' : 'bg-white'
+          )} onClick={e => e.stopPropagation()}>
+            <CardContent className="p-8 text-center space-y-4">
+              <div className={cn(
+                'mx-auto w-16 h-16 rounded-2xl flex items-center justify-center',
+                isFefoViolation ? 'bg-red-100' : 'bg-amber-100'
+              )}>
+                {isFefoViolation
+                  ? <Shield className="text-red-600" size={32}/>
+                  : <AlertTriangle className="text-amber-600" size={32}/>
+                }
+              </div>
+              <div>
+                <h3 className={cn('text-lg font-black', isFefoViolation ? 'text-red-900' : 'text-slate-900')}>
+                  {isFefoViolation ? 'Confirmar Saída Fora do FEFO?' : 'Confirmar Baixa de Estoque?'}
+                </h3>
+                <p className="text-sm text-slate-500 mt-1">
+                  {isFefoViolation
+                    ? 'Esta ação ficará registrada na auditoria como violação da política FEFO.'
+                    : 'Esta ação é irreversível e será registrada na trilha de auditoria.'
+                  }
+                </p>
+                {isFefoViolation && formSaida.justificativa_fefo && (
+                  <div className="mt-3 p-3 bg-red-100 rounded-lg text-left">
+                    <p className="text-[9px] font-black text-red-600 uppercase">Justificativa registrada:</p>
+                    <p className="text-xs text-red-800 mt-0.5">{formSaida.justificativa_fefo}</p>
                   </div>
-               </div>
-               <div className="p-4 bg-amber-50 border border-amber-100 rounded-xl flex items-start gap-3">
-                  <AlertTriangle className="text-amber-600 shrink-0" size={18}/>
-                  <p className="text-[10px] font-bold text-amber-900 leading-tight">ATENÇÃO: A saída manual gera uma trilha de auditoria irreversível vinculada ao seu usuário.</p>
-               </div>
-               <Button onClick={handleSaida} className="w-full bg-blue-900 hover:bg-black text-white font-black h-12 rounded-xl mt-4">
-                  Confirmar Baixa de Lote
-               </Button>
+                )}
+              </div>
+              <div className="flex gap-3 pt-2">
+                <Button
+                  variant="outline"
+                  onClick={() => setShowAlertaSeguranca(false)}
+                  className="flex-1 h-11 rounded-xl font-bold"
+                >
+                  Cancelar
+                </Button>
+                <Button
+                  onClick={confirmarSaida}
+                  className={cn(
+                    'flex-1 h-11 rounded-xl font-black text-white',
+                    isFefoViolation ? 'bg-red-600 hover:bg-red-700' : 'bg-blue-900 hover:bg-black'
+                  )}
+                >
+                  {isFefoViolation ? 'Sim, registrar' : 'Confirmar'}
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
+      {/* Command Palette (Ctrl+K) */}
+      {showCommandPalette && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-start justify-center z-[1003] pt-[20vh]" onClick={() => { setShowCommandPalette(false); setSerialMode(false); setSerialResult(null); }}>
+          <Card className="w-full max-w-lg shadow-2xl bg-white border-0 animate-in slide-in-from-top-4 fade-in duration-200" onClick={e => e.stopPropagation()}>
+            <CardContent className="p-0">
+              <div className="flex items-center border-b border-slate-100 px-4 gap-2">
+                {serialMode ? (
+                  <>
+                    <button onClick={() => { setSerialMode(false); setSerialResult(null); setCmdBusca(''); }} className="text-slate-400 hover:text-slate-600 transition-colors shrink-0">
+                      <ArrowLeftCircle size={18} />
+                    </button>
+                    <ScanBarcode size={16} className="text-blue-500 shrink-0" />
+                  </>
+                ) : (
+                  <Command size={16} className="text-slate-400 shrink-0" />
+                )}
+                <Input
+                  ref={cmdInputRef}
+                  placeholder={serialMode ? 'Digite o serial number...' : 'O que deseja fazer?'}
+                  value={cmdBusca}
+                  onChange={e => { setCmdBusca(e.target.value); if (serialMode) setSerialResult(null); }}
+                  className="border-0 shadow-none focus-visible:ring-0 h-14 text-base"
+                  onKeyDown={e => {
+                    if (e.key === 'Escape' && serialMode) {
+                      e.stopPropagation();
+                      setSerialMode(false); setSerialResult(null); setCmdBusca('');
+                      return;
+                    }
+                    if (e.key === 'Enter') {
+                      if (serialMode) {
+                        handleSerialSearch(cmdBusca);
+                      } else if (filteredCommands.length > 0) {
+                        filteredCommands[0].action();
+                      }
+                    }
+                  }}
+                />
+                {serialMode && serialLoading && <Loader2 size={16} className="animate-spin text-blue-500 shrink-0" />}
+                <kbd className="hidden sm:flex items-center gap-0.5 text-[9px] font-mono text-slate-300 border border-slate-200 rounded px-1.5 py-0.5 shrink-0">
+                  ESC
+                </kbd>
+              </div>
+
+              {/* Standard command list */}
+              {!serialMode && (
+                <div className="py-2 max-h-64 overflow-y-auto">
+                  {filteredCommands.map(cmd => (
+                    <button
+                      key={cmd.id}
+                      onClick={cmd.action}
+                      className="w-full text-left px-4 py-3 flex items-center gap-3 hover:bg-blue-50 transition-colors"
+                    >
+                      <div className={cn('w-8 h-8 rounded-lg flex items-center justify-center', cmd.id === 'rastrear-sn' ? 'bg-blue-50' : 'bg-slate-100')}>
+                        <cmd.icon size={16} className={cmd.id === 'rastrear-sn' ? 'text-blue-600' : 'text-slate-600'} />
+                      </div>
+                      <div className="flex-1">
+                        <span className="text-sm font-bold text-slate-900">{cmd.label}</span>
+                        <p className="text-xs text-slate-400">{cmd.desc}</p>
+                      </div>
+                      <kbd className="hidden sm:block text-[8px] font-mono text-slate-300 bg-slate-50 border border-slate-200 rounded px-1.5 py-0.5">
+                        ↵
+                      </kbd>
+                    </button>
+                  ))}
+                  {filteredCommands.length === 0 && (
+                    <div className="px-4 py-6 text-center text-sm text-slate-400">Nenhum comando encontrado</div>
+                  )}
+                </div>
+              )}
+
+              {/* Serial tracking result area */}
+              {serialMode && (
+                <div className="py-3 px-4 max-h-80 overflow-y-auto">
+                  {!serialResult && !serialLoading && (
+                    <div className="text-center py-8">
+                      <ScanBarcode size={32} className="mx-auto text-slate-200 mb-2" />
+                      <p className="text-sm text-slate-400">Digite um serial number e pressione <kbd className="font-mono bg-slate-100 px-1.5 py-0.5 rounded text-[10px] font-bold">Enter</kbd></p>
+                      <p className="text-[10px] text-slate-300 mt-1">Ex: SN-2024-00001</p>
+                    </div>
+                  )}
+
+                  {serialLoading && (
+                    <div className="text-center py-8">
+                      <Loader2 size={24} className="mx-auto animate-spin text-blue-500 mb-2" />
+                      <p className="text-sm text-slate-400">Rastreando serial...</p>
+                    </div>
+                  )}
+
+                  {serialResult === 'NOT_FOUND' && (
+                    <div className="text-center py-8">
+                      <div className="mx-auto w-12 h-12 bg-red-50 rounded-xl flex items-center justify-center mb-3">
+                        <X size={20} className="text-red-400" />
+                      </div>
+                      <p className="text-sm font-bold text-slate-600">Serial não encontrado</p>
+                      <p className="text-xs text-slate-400 mt-1">Verifique o número e tente novamente</p>
+                    </div>
+                  )}
+
+                  {serialResult && serialResult !== 'NOT_FOUND' && (
+                    <div className="space-y-3">
+                      {/* Header card */}
+                      <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl p-4 border border-blue-100">
+                        <div className="flex items-start justify-between">
+                          <div>
+                            <p className="text-[9px] font-black text-blue-500 uppercase tracking-wider">Serial Number</p>
+                            <p className="text-lg font-black text-slate-900 font-mono">{serialResult.serial_number}</p>
+                          </div>
+                          <Badge className={cn('shadow-none text-[9px] font-black uppercase',
+                            serialResult.status === 'DISPONIVEL' ? 'bg-emerald-100 text-emerald-700 border-emerald-200' :
+                            serialResult.status === 'DISPENSADO' ? 'bg-blue-100 text-blue-700 border-blue-200' :
+                            serialResult.status === 'BLOQUEADO' ? 'bg-red-100 text-red-700 border-red-200' :
+                            'bg-slate-100 text-slate-600 border-slate-200'
+                          )}>{serialResult.status}</Badge>
+                        </div>
+                        <p className="text-sm font-bold text-slate-700 mt-1">{serialResult.medicamento_nome}</p>
+                      </div>
+
+                      {/* Details grid */}
+                      <div className="grid grid-cols-2 gap-2">
+                        <div className="bg-slate-50 rounded-lg p-3">
+                          <div className="flex items-center gap-1.5 mb-1">
+                            <Package size={11} className="text-slate-400" />
+                            <span className="text-[9px] font-black text-slate-400 uppercase">Lote</span>
+                          </div>
+                          <p className="text-sm font-bold text-slate-800 font-mono">{serialResult.lote_codigo}</p>
+                        </div>
+                        <div className="bg-slate-50 rounded-lg p-3">
+                          <div className="flex items-center gap-1.5 mb-1">
+                            <Calendar size={11} className="text-slate-400" />
+                            <span className="text-[9px] font-black text-slate-400 uppercase">Validade</span>
+                          </div>
+                          <p className={cn('text-sm font-bold font-mono',
+                            new Date(serialResult.data_validade) < new Date() ? 'text-red-600' : 'text-slate-800'
+                          )}>{new Date(serialResult.data_validade).toLocaleDateString('pt-BR')}</p>
+                        </div>
+                        <div className="bg-slate-50 rounded-lg p-3">
+                          <div className="flex items-center gap-1.5 mb-1">
+                            <DollarSign size={11} className="text-slate-400" />
+                            <span className="text-[9px] font-black text-slate-400 uppercase">Custo Unit.</span>
+                          </div>
+                          <p className="text-sm font-bold text-slate-800">R$ {serialResult.custo_unitario.toFixed(2)}</p>
+                        </div>
+                        <div className="bg-slate-50 rounded-lg p-3">
+                          <div className="flex items-center gap-1.5 mb-1">
+                            <Building2 size={11} className="text-slate-400" />
+                            <span className="text-[9px] font-black text-slate-400 uppercase">Fornecedor</span>
+                          </div>
+                          <p className="text-sm font-bold text-slate-800 truncate">{serialResult.fornecedor_nome ?? '—'}</p>
+                        </div>
+                      </div>
+
+                      {/* Dispensação info */}
+                      {serialResult.paciente_nome && (
+                        <div className="bg-amber-50 border border-amber-100 rounded-xl p-3">
+                          <div className="flex items-center gap-1.5 mb-2">
+                            <User size={12} className="text-amber-600" />
+                            <span className="text-[9px] font-black text-amber-600 uppercase">Dispensado para</span>
+                          </div>
+                          <p className="text-sm font-bold text-slate-800">{serialResult.paciente_nome}</p>
+                          <div className="flex items-center gap-4 mt-1">
+                            <span className="text-xs text-slate-500">CPF: <span className="font-mono font-bold">{serialResult.paciente_cpf}</span></span>
+                            {serialResult.data_dispensacao && (
+                              <span className="text-xs text-slate-500 flex items-center gap-1">
+                                <CalendarClock size={10} />
+                                {new Date(serialResult.data_dispensacao).toLocaleDateString('pt-BR')}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              <div className="border-t border-slate-100 px-4 py-2 flex items-center justify-between text-[9px] text-slate-300 font-medium">
+                <span className="flex items-center gap-1"><Keyboard size={10}/> {serialMode ? '← Voltar · Enter buscar' : 'Ctrl+K para abrir'}</span>
+                <span>{serialMode ? 'Rastreamento S/N' : `${filteredCommands.length} comando${filteredCommands.length !== 1 ? 's' : ''}`}</span>
+              </div>
             </CardContent>
           </Card>
         </div>

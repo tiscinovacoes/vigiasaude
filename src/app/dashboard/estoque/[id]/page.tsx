@@ -2,19 +2,24 @@
 
 import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { 
-  ArrowLeft, 
-  Package, 
-  Layers, 
-  Calendar, 
+import {
+  ArrowLeft,
+  Package,
+  Layers,
+  Calendar,
   AlertTriangle,
   CheckCircle2,
   ShieldCheck,
   TrendingUp,
   History,
-  Info
+  Info,
+  ArrowUp,
+  ArrowDown,
+  ChevronDown
 } from 'lucide-react';
-import { api, type Medicamento, type Lote } from '@/lib/api';
+import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
+import { api, type Medicamento, type Lote, type MovimentacaoEstoque } from '@/lib/api';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
@@ -37,6 +42,8 @@ export default function MedicamentoDetalheFEFO() {
   const [loading, setLoading] = useState(true);
   const [medicamento, setMedicamento] = useState<Medicamento | null>(null);
   const [lotes, setLotes] = useState<Lote[]>([]);
+  const [movimentacoes, setMovimentacoes] = useState<MovimentacaoEstoque[]>([]);
+  const [filtroMov, setFiltroMov] = useState<'TUDO' | 'ENTRADA' | 'SAIDA'>('TUDO');
 
   useEffect(() => {
     loadData();
@@ -53,6 +60,13 @@ export default function MedicamentoDetalheFEFO() {
         // Carregar lotes via API específica FEFO
         const lotesData = await api.getLotesByMedicamento(id);
         setLotes(lotesData);
+        // Carregar histórico de movimentações
+        try {
+          const movsData = await api.getMovimentacoesPorMedicamento(id);
+          setMovimentacoes(movsData);
+        } catch (err) {
+          console.warn('⚠️ Erro ao carregar movimentações:', err);
+        }
       }
     } catch (err) {
       console.error(err);
@@ -81,6 +95,40 @@ export default function MedicamentoDetalheFEFO() {
 
   const totalDisponivel = lotes.reduce((acc, l) => acc + (l.quantidade_disponivel || 0), 0);
   const isCritico = totalDisponivel < medicamento.estoque_minimo;
+
+  // Preparar dados para gráfico de consumo (últimos 6 meses)
+  const prepararDadosConsumo = () => {
+    const agora = new Date();
+    const meses: Record<string, { mes: string; saidas: number }> = {};
+    const nomesMeses = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
+
+    // Inicializar últimos 6 meses
+    for (let i = 5; i >= 0; i--) {
+      const d = new Date(agora);
+      d.setMonth(d.getMonth() - i);
+      const key = `${d.getFullYear()}-${String(d.getMonth()).padStart(2, '0')}`;
+      const mesNome = nomesMeses[d.getMonth()];
+      meses[key] = { mes: mesNome, saidas: 0 };
+    }
+
+    // Somar saídas por mês
+    movimentacoes
+      .filter(m => m.tipo === 'SAIDA')
+      .forEach(m => {
+        const d = new Date(m.created_at);
+        const key = `${d.getFullYear()}-${String(d.getMonth()).padStart(2, '0')}`;
+        if (meses[key]) {
+          meses[key].saidas += m.quantidade || 0;
+        }
+      });
+
+    return Object.values(meses);
+  };
+
+  const dadosConsumo = prepararDadosConsumo();
+  const movFiltradas = filtroMov === 'TUDO'
+    ? movimentacoes
+    : movimentacoes.filter(m => m.tipo === filtroMov);
 
   return (
     <div className="p-8 space-y-8 bg-slate-50/50 min-h-full">
@@ -247,6 +295,122 @@ export default function MedicamentoDetalheFEFO() {
             <p className="text-sm">Não há estoque disponível para dispensação no momento.</p>
           </div>
         )}
+      </Card>
+
+      {/* GRÁFICO DE CONSUMO — ÚLTIMOS 6 MESES */}
+      <Card className="border-none shadow-sm overflow-hidden">
+        <CardHeader className="bg-white border-b border-slate-50">
+          <div>
+            <CardTitle className="text-lg font-black">Consumo Últimos 6 Meses</CardTitle>
+            <CardDescription className="text-xs font-bold uppercase tracking-tighter text-slate-400 mt-1">
+              Quantidade de unidades saídas por mês (FEFO)
+            </CardDescription>
+          </div>
+        </CardHeader>
+        <CardContent className="p-6">
+          {dadosConsumo.length > 0 && dadosConsumo.some(d => d.saidas > 0) ? (
+            <ResponsiveContainer width="100%" height={300}>
+              <BarChart data={dadosConsumo}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
+                <XAxis dataKey="mes" stroke="#94a3b8" />
+                <YAxis stroke="#94a3b8" />
+                <Tooltip
+                  contentStyle={{ backgroundColor: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '8px' }}
+                  formatter={(value) => [value, 'Saídas']}
+                />
+                <Bar dataKey="saidas" fill="#ef4444" radius={[8, 8, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          ) : (
+            <div className="h-[300px] flex items-center justify-center text-slate-400">
+              <p className="font-bold">Sem dados de movimento nos últimos 6 meses</p>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* HISTÓRICO DE MOVIMENTAÇÕES */}
+      <Card className="border-none shadow-sm overflow-hidden">
+        <CardHeader className="bg-white border-b border-slate-50">
+          <CardTitle className="text-lg font-black">Histórico de Movimentações</CardTitle>
+        </CardHeader>
+        <CardContent className="p-6">
+          <Tabs defaultValue="TUDO" onValueChange={(val) => setFiltroMov(val as any)} className="w-full">
+            <TabsList className="grid w-full grid-cols-3 mb-6">
+              <TabsTrigger value="TUDO">Tudo</TabsTrigger>
+              <TabsTrigger value="ENTRADA">Entradas</TabsTrigger>
+              <TabsTrigger value="SAIDA">Saídas</TabsTrigger>
+            </TabsList>
+
+            <TabsContent value={filtroMov} className="mt-0">
+              {movFiltradas.length > 0 ? (
+                <div className="space-y-3 max-h-96 overflow-y-auto">
+                  {movFiltradas.map((mov) => (
+                    <div key={mov.id} className="border border-slate-100 rounded-lg p-4 hover:bg-slate-50 transition-colors">
+                      <div className="flex items-start justify-between">
+                        <div className="flex items-start gap-3 flex-1">
+                          <div className={cn(
+                            'mt-1 p-2 rounded-lg shrink-0',
+                            mov.tipo === 'ENTRADA' ? 'bg-emerald-50' : 'bg-red-50'
+                          )}>
+                            {mov.tipo === 'ENTRADA'
+                              ? <ArrowDown className="w-4 h-4 text-emerald-600" />
+                              : <ArrowUp className="w-4 h-4 text-red-600" />
+                            }
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 mb-1">
+                              <span className="font-bold text-slate-900">
+                                {mov.tipo === 'ENTRADA' ? 'Entrada' : 'Saída'}
+                              </span>
+                              <span className={cn(
+                                'text-xs font-black px-2 py-0.5 rounded-full',
+                                mov.tipo === 'ENTRADA' ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'
+                              )}>
+                                {mov.quantidade} un.
+                              </span>
+                            </div>
+                            <p className="text-xs text-slate-500 mb-1">
+                              {mov.motivo || mov.origem || mov.destino || '—'}
+                            </p>
+                            <div className="flex items-center gap-2 text-[10px] text-slate-400">
+                              <Calendar size={12} />
+                              {new Date(mov.created_at).toLocaleDateString('pt-BR', {
+                                day: '2-digit',
+                                month: '2-digit',
+                                year: 'numeric',
+                                hour: '2-digit',
+                                minute: '2-digit'
+                              })}
+                              {mov.usuario && (
+                                <>
+                                  <span>•</span>
+                                  <span>{mov.usuario}</span>
+                                </>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                        {mov.saldo_apos !== null && mov.saldo_apos !== undefined && (
+                          <div className="text-right shrink-0 ml-4">
+                            <p className="text-xs text-slate-400 uppercase font-black mb-1">Saldo</p>
+                            <p className="text-lg font-black text-slate-800">{mov.saldo_apos}</p>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="p-12 text-center text-slate-400">
+                  <History size={40} className="mx-auto mb-3 opacity-30" />
+                  <p className="font-bold">Sem movimentações nesta categoria</p>
+                  <p className="text-sm">Histórico aparecerá aqui conforme entradas e saídas forem registradas.</p>
+                </div>
+              )}
+            </TabsContent>
+          </Tabs>
+        </CardContent>
       </Card>
 
       {/* FOOTER INFO */}

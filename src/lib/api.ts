@@ -64,6 +64,21 @@ export type Fornecedor = {
   created_at: string;
 };
 
+export type MovimentacaoEstoque = {
+  id: string;
+  medicamento_id: string;
+  lote_id?: string;
+  tipo: 'ENTRADA' | 'SAIDA';
+  quantidade: number;
+  saldo_apos?: number;
+  origem?: string;
+  destino?: string;
+  motivo?: string;
+  usuario?: string;
+  created_at: string;
+  lotes?: Lote;
+};
+
 export type EntregaLogistica = {
   id: string;
   dispense_id: string;
@@ -77,10 +92,10 @@ export type EntregaLogistica = {
   created_at: string;
   pacientes?: Paciente;
   motoristas?: { id: string; nome: string; placa_veiculo: string };
-  itens?: { 
-    id: string; 
-    serial_number: string; 
-    medicamento_nome: string; 
+  itens?: {
+    id: string;
+    serial_number: string;
+    medicamento_nome: string;
     lote_codigo: string;
     medicamento_codigo: string;
   }[];
@@ -290,11 +305,21 @@ export const api = {
       const result = await res.json();
       if (!result.success) throw new Error(result.error || 'Erro ao registrar entrada');
 
-      // 3. Auditoria WORM
-      await auditoriaAPI.log('CREATE', 'lotes', { 
-        ...payload, 
+      // 3. Registrar movimento no histórico automaticamente
+      await this.registrarMovimentacao({
+        medicamento_id: payload.medicamento_id,
+        lote_id: payload.codigo_lote ? undefined : undefined, // será preenchido via SELECT posterior se necessário
+        tipo: 'ENTRADA',
+        quantidade: payload.quantidade,
+        origem: 'Compra',
+        usuario: (await supabase.auth.getUser()).data?.user?.email || 'Sistema'
+      }).catch(err => console.warn('⚠️ Erro ao registrar movimento de entrada:', err));
+
+      // 4. Auditoria WORM
+      await auditoriaAPI.log('CREATE', 'lotes', {
+        ...payload,
         cmed_validation: cmed,
-        alerta_financeiro: isExcedido 
+        alerta_financeiro: isExcedido
       });
 
       return { success: true };
@@ -322,17 +347,30 @@ export const api = {
       if (lote.quantidade_disponivel < payload.quantidade) throw new Error('Saldo insuficiente para a operação');
 
       // 2. Decrementar saldo
+      const novoSaldo = lote.quantidade_disponivel - payload.quantidade;
       const { error } = await supabase
         .from('lotes')
-        .update({ 
-          quantidade_disponivel: lote.quantidade_disponivel - payload.quantidade 
+        .update({
+          quantidade_disponivel: novoSaldo
         })
         .eq('id', payload.lote_id);
 
       if (error) throw error;
 
-      // Auditoria WORM
-      await auditoriaAPI.log('UPDATE', 'lotes', { 
+      // 3. Registrar movimento no histórico automaticamente
+      await this.registrarMovimentacao({
+        medicamento_id: lote.medicamento_id,
+        lote_id: payload.lote_id,
+        tipo: 'SAIDA',
+        quantidade: payload.quantidade,
+        saldo_apos: novoSaldo,
+        destino: payload.destino,
+        motivo: payload.motivo,
+        usuario: (await supabase.auth.getUser()).data?.user?.email || 'Sistema'
+      }).catch(err => console.warn('⚠️ Erro ao registrar movimento de saída:', err));
+
+      // 4. Auditoria WORM
+      await auditoriaAPI.log('UPDATE', 'lotes', {
         acao: 'SAIDA_ESTOQUE',
         lote_id: payload.lote_id,
         quantidade: payload.quantidade,
@@ -459,16 +497,74 @@ export const api = {
 
       if (errR) throw errR;
 
-      const adesao = entregas && entregas.length > 0 ? 85 + (Math.random() * 10) : 0; 
+      // 3. Calcular Adesão REAL: (recebidas / programadas) × 100
+      //    Dispensações = entregas logísticas ENTREGUE ou EM_ROTA para este paciente
+      const { count: dispensacoesProgramadas } = await supabase
+        .from('entregas_logistica')
+        .select('*', { count: 'exact', head: true })
+        .eq('paciente_id', id);
+
+      const adesaoReal = (dispensacoesProgramadas && dispensacoesProgramadas > 0)
+        ? Math.round(((entregas?.length ?? 0) / dispensacoesProgramadas) * 100)
+        : 0;
 
       return {
         investimentoTotal,
         recalls: recalls || [],
-        adesao: Math.round(adesao)
+        adesao: Math.min(adesaoReal, 100)
       };
     } catch (err) {
       console.error('❌ [API Error] getPacienteAnalytics:', err);
       return { investimentoTotal: 0, recalls: [], adesao: 0 };
+    }
+  },
+
+  async getTimelineDispensacoes(pacienteId: string): Promise<{
+    id: string;
+    data: string;
+    status: string;
+    lote_codigo: string;
+    medicamento_nome: string;
+    serial_numbers: string[];
+    custo_total: number;
+  }[]> {
+    try {
+      const { data, error } = await supabase
+        .from('entregas_logistica')
+        .select(`
+          id, created_at, status_entrega,
+          unidades_serializadas (
+            serial_number,
+            lotes (codigo_lote_fabricante, custo_unitario, medicamentos(nome))
+          )
+        `)
+        .eq('paciente_id', pacienteId)
+        .order('created_at', { ascending: false });
+      if (error) throw error;
+      return (data ?? []).map((e: any) => {
+        const sns: string[] = [];
+        let custo = 0;
+        let lote_codigo = '';
+        let medicamento_nome = '';
+        (e.unidades_serializadas ?? []).forEach((u: any) => {
+          sns.push(u.serial_number);
+          custo += u.lotes?.custo_unitario ?? 0;
+          if (!lote_codigo) lote_codigo = u.lotes?.codigo_lote_fabricante ?? '';
+          if (!medicamento_nome) medicamento_nome = u.lotes?.medicamentos?.nome ?? '';
+        });
+        return {
+          id: e.id,
+          data: e.created_at,
+          status: e.status_entrega,
+          lote_codigo,
+          medicamento_nome,
+          serial_numbers: sns,
+          custo_total: custo,
+        };
+      });
+    } catch (err) {
+      console.error('❌ [API Error] getTimelineDispensacoes:', err);
+      return [];
     }
   },
 
@@ -757,7 +853,7 @@ export const api = {
           updated_at: new Date().toISOString()
         })
         .eq('id', id);
-      
+
       if (error) throw error;
       return true;
     } catch (err) {
@@ -776,7 +872,7 @@ export const api = {
       const { data: meds, error: medsErr } = await supabase
         .from('medicamentos')
         .select('id, estoque_minimo, lotes(quantidade_disponivel)');
-      
+
       let estoqueCritico = 0;
       if (!medsErr && meds) {
         estoqueCritico = meds.filter((m: any) => {
@@ -789,7 +885,7 @@ export const api = {
       const { data: forns, error: fornsErr } = await supabase
         .from('fornecedores')
         .select('lead_time_medio');
-      
+
       let leadTimeMedio = 0;
       if (!fornsErr && forns && forns.length > 0) {
         leadTimeMedio = Math.round(
@@ -828,7 +924,7 @@ export const api = {
         .from('vw_previsao_ruptura')
         .select('medicamento_id')
         .in('status_logistico', ['CRÍTICO (ZERADO)', 'ALERTA (MENOS DE 7 DIAS)']);
-      
+
       const riscoRupturaCount = (!riscoErr && risco) ? risco.length : 0;
 
       return {
@@ -846,17 +942,71 @@ export const api = {
     }
   },
 
+  // --------------------------------------------------------------------------
+  // MOVIMENTAÇÕES DE ESTOQUE — HISTÓRICO
+  // --------------------------------------------------------------------------
+
+  async getMovimentacoesPorMedicamento(medicamentoId: string): Promise<MovimentacaoEstoque[]> {
+    try {
+      const { data, error } = await supabase
+        .from('movimentacoes_estoque')
+        .select('*, lotes(*)')
+        .eq('medicamento_id', medicamentoId)
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+      return (data || []) as MovimentacaoEstoque[];
+    } catch (err: any) {
+      console.error('❌ [API Error] getMovimentacoesPorMedicamento:', err);
+      throw err;
+    }
+  },
+
+  async registrarMovimentacao(payload: {
+    medicamento_id: string;
+    lote_id?: string;
+    tipo: 'ENTRADA' | 'SAIDA';
+    quantidade: number;
+    saldo_apos?: number;
+    origem?: string;
+    destino?: string;
+    motivo?: string;
+    usuario?: string;
+  }): Promise<{ success: boolean; error?: string }> {
+    try {
+      const { error } = await supabase
+        .from('movimentacoes_estoque')
+        .insert([{
+          medicamento_id: payload.medicamento_id,
+          lote_id: payload.lote_id,
+          tipo: payload.tipo,
+          quantidade: payload.quantidade,
+          saldo_apos: payload.saldo_apos,
+          origem: payload.origem,
+          destino: payload.destino,
+          motivo: payload.motivo,
+          usuario: payload.usuario,
+        }]);
+
+      if (error) throw error;
+      return { success: true };
+    } catch (err: any) {
+      console.error('❌ [API Error] registrarMovimentacao:', err);
+      return { success: false, error: err.message };
+    }
+  },
+
   async getConsumoMensal(): Promise<{ month: string; entrada: number; consumo: number }[]> {
     try {
       const { data: lotes, error } = await supabase
         .from('lotes')
         .select('created_at, quantidade_disponivel, custo_unitario');
-      
+
       if (error || !lotes || lotes.length === 0) throw error;
 
       const meses: Record<string, { entrada: number; consumo: number }> = {};
       const nomesMeses = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
-      
+
       lotes.forEach((l: any) => {
         const d = new Date(l.created_at);
         const key = nomesMeses[d.getMonth()];
@@ -927,18 +1077,18 @@ export const api = {
     const bps =
       bpsRef !== null
         ? {
-            valido: valorUnitario <= bpsRef,
-            referencia: bpsRef,
-            percentual: valorUnitario > bpsRef ? ((valorUnitario / bpsRef) - 1) * 100 : 0,
-          }
+          valido: valorUnitario <= bpsRef,
+          referencia: bpsRef,
+          percentual: valorUnitario > bpsRef ? ((valorUnitario / bpsRef) - 1) * 100 : 0,
+        }
         : { valido: null, referencia: null, percentual: null };
 
     // 3. Status consolidado — nunca bloqueia, apenas alerta
     const status = !cmed.valido
       ? 'ALERTA_CMED'
       : bps.valido === false
-      ? 'ALERTA_BPS'
-      : 'OK';
+        ? 'ALERTA_BPS'
+        : 'OK';
 
     return { cmed, bps, status };
   },
@@ -961,8 +1111,8 @@ export const api = {
       const alerta = validacao.status === 'ALERTA_CMED'
         ? `⚠ Preço acima do teto CMED (R$ ${validacao.cmed.teto.toFixed(2)}) em +${validacao.cmed.percentual.toFixed(1)}%`
         : validacao.status === 'ALERTA_BPS'
-        ? `⚠ Preço acima da referência BPS (R$ ${validacao.bps.referencia?.toFixed(2)}) em +${validacao.bps.percentual?.toFixed(1)}%`
-        : undefined;
+          ? `⚠ Preço acima da referência BPS (R$ ${validacao.bps.referencia?.toFixed(2)}) em +${validacao.bps.percentual?.toFixed(1)}%`
+          : undefined;
 
       const { error } = await supabase.from('compras_registro').insert([{
         medicamento_id: payload.medicamento_id,
@@ -1005,43 +1155,56 @@ export const api = {
     }
   },
 
-};
+}; // fim api
+
+/** Utilitário: distância haversine em km entre dois pontos geográficos */
+export function haversineKm(lat1: number, lon1: number, lat2: number, lon2: number): number {
+  const R = 6371;
+  const dLat = ((lat2 - lat1) * Math.PI) / 180;
+  const dLon = ((lon2 - lon1) * Math.PI) / 180;
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos((lat1 * Math.PI) / 180) *
+    Math.cos((lat2 * Math.PI) / 180) *
+    Math.sin(dLon / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
 
 export const auditoriaAPI = {
-  
+
   async log(acao: 'CREATE' | 'UPDATE' | 'DELETE' | 'ALERTA_SEGURANCA' | 'FEFO_BLOCK', entidade: string, metadados: any) {
     try {
-       const user = (await supabase.auth.getUser()).data?.user?.email || 'System';
-       
-       const { error } = await supabase.from('logs_auditoria').insert([{
-         acao,
-         tabela_afetada: entidade,
-         ator: user,
-         metadados: JSON.stringify(metadados),
-         severidade: acao === 'ALERTA_SEGURANCA' ? 'Crítica' : 'Alta'
-       }]);
+      const user = (await supabase.auth.getUser()).data?.user?.email || 'System';
 
-       if (error) throw error;
-    } catch(err) {
-       console.error('❌ [API Error] logAuditoria:', err);
+      const { error } = await supabase.from('logs_auditoria').insert([{
+        acao,
+        tabela_afetada: entidade,
+        ator: user,
+        metadados: JSON.stringify(metadados),
+        severidade: acao === 'ALERTA_SEGURANCA' ? 'Crítica' : 'Alta'
+      }]);
+
+      if (error) throw error;
+    } catch (err) {
+      console.error('❌ [API Error] logAuditoria:', err);
     }
   },
 
   async createLog(params: { acao: string, usuario: string, modulo: string, descricao: string, gravidade: string }) {
     try {
-       const { error } = await supabase.from('logs_auditoria').insert([{
-         acao: params.acao,
-         tabela_afetada: params.modulo,
-         ator: params.usuario,
-         metadados: JSON.stringify({ descricao: params.descricao, gravidade: params.gravidade }),
-         severidade: params.gravidade
-       }]);
+      const { error } = await supabase.from('logs_auditoria').insert([{
+        acao: params.acao,
+        tabela_afetada: params.modulo,
+        ator: params.usuario,
+        metadados: JSON.stringify({ descricao: params.descricao, gravidade: params.gravidade }),
+        severidade: params.gravidade
+      }]);
 
-       if (error) throw error;
-       return { success: true };
-    } catch(err) {
-       console.error('Erro ao registrar log WORM:', err);
-       return { success: false };
+      if (error) throw error;
+      return { success: true };
+    } catch (err) {
+      console.error('Erro ao registrar log WORM:', err);
+      return { success: false };
     }
   },
 
@@ -1079,5 +1242,465 @@ export const recallAPI = {
         }
       )
       .subscribe();
-  }
+  },
+
+  /** Rastreia um serial number individual retornando toda a cadeia de custódia */
+  async rastrearSerialNumber(serial: string): Promise<{
+    serial_number: string;
+    lote: { codigo: string; validade: string; status: string };
+    medicamento: { nome: string };
+    paciente?: { nome: string; id: string };
+    entregas: { data: string; status: string; entregador: string }[];
+  } | null> {
+    try {
+      // 1. Buscar a unidade serializada com lote e medicamento (sem entregas)
+      const { data, error } = await supabase
+        .from('unidades_serializadas')
+        .select(`
+          id, serial_number, status,
+          lotes (
+            codigo_lote_fabricante, data_validade, status,
+            medicamentos (nome)
+          )
+        `)
+        .eq('serial_number', serial)
+        .single();
+      if (error || !data) return null;
+      const l = (data as any).lotes ?? {};
+
+      // 2. Buscar entregas desta unidade separadamente
+      let entregas: any[] = [];
+      let ultimaEntrega: any = null;
+      const { data: entregasData } = await supabase
+        .from('entregas_logistica')
+        .select('created_at, status_entrega, entregador_nome, paciente_id, pacientes(id, nome_completo)')
+        .eq('unidade_serializada_id', (data as any).id)
+        .order('created_at', { ascending: true });
+      if (entregasData && entregasData.length > 0) {
+        entregas = entregasData;
+        ultimaEntrega = entregasData[entregasData.length - 1];
+      }
+
+      return {
+        serial_number: (data as any).serial_number,
+        lote: {
+          codigo: l.codigo_lote_fabricante,
+          validade: l.data_validade,
+          status: l.status,
+        },
+        medicamento: { nome: l.medicamentos?.nome ?? '' },
+        paciente: ultimaEntrega?.pacientes
+          ? { nome: ultimaEntrega.pacientes.nome_completo, id: ultimaEntrega.pacientes.id }
+          : undefined,
+        entregas: entregas.map((e: any) => ({
+          data: e.created_at,
+          status: e.status_entrega,
+          entregador: e.entregador_nome ?? '',
+        })),
+      };
+    } catch (err) {
+      console.error('❌ [API Error] rastrearSerialNumber:', err);
+      return null;
+    }
+  },
+
+  /** Retorna todos os lotes com status RECALL */
+  async getLotesEmRecall(): Promise<{
+    id: string;
+    codigo_lote_fabricante: string;
+    data_validade: string;
+    medicamento_nome: string;
+    unidades_afetadas: number;
+  }[]> {
+    try {
+      const { data, error } = await supabase
+        .from('lotes')
+        .select('id, codigo_lote_fabricante, data_validade, medicamentos(nome)')
+        .eq('status', 'RECALL');
+      if (error) throw error;
+      const result = await Promise.all((data ?? []).map(async (l: any) => {
+        const { count } = await supabase
+          .from('unidades_serializadas')
+          .select('*', { count: 'exact', head: true })
+          .eq('lote_id', l.id);
+        return {
+          id: l.id,
+          codigo_lote_fabricante: l.codigo_lote_fabricante,
+          data_validade: l.data_validade,
+          medicamento_nome: l.medicamentos?.nome ?? '',
+          unidades_afetadas: count ?? 0,
+        };
+      }));
+      return result;
+    } catch (err) {
+      console.error('❌ [API Error] getLotesEmRecall:', err);
+      return [];
+    }
+  },
+
+  /** FEFO: verifica se há unidades vencidas ou próximas do vencimento sendo usadas antes de outras */
+  async verificarViolacaoFEFO(loteIds: string[]): Promise<{
+    violou: boolean;
+    lotes_problema: { id: string; codigo: string; validade: string }[];
+  }> {
+    try {
+      if (!loteIds.length) return { violou: false, lotes_problema: [] };
+      const { data, error } = await supabase
+        .from('lotes')
+        .select('id, codigo_lote_fabricante, data_validade, status')
+        .in('id', loteIds)
+        .order('data_validade', { ascending: true });
+      if (error) throw error;
+      const hoje = new Date();
+      const problemáticos = (data ?? []).filter((l: any) => {
+        const validade = new Date(l.data_validade);
+        const diasRestantes = Math.round((validade.getTime() - hoje.getTime()) / 86400000);
+        return diasRestantes < 0 || (diasRestantes < 30 && l.status !== 'RECALL');
+      });
+      return {
+        violou: problemáticos.length > 0,
+        lotes_problema: problemáticos.map((l: any) => ({
+          id: l.id,
+          codigo: l.codigo_lote_fabricante,
+          validade: l.data_validade,
+        })),
+      };
+    } catch (err) {
+      console.error('❌ [API Error] verificarViolacaoFEFO:', err);
+      return { violou: false, lotes_problema: [] };
+    }
+  },
+
+  // --------------------------------------------------------------------------
+  // FEFO — Verificação por medicamento + lote específico
+  // --------------------------------------------------------------------------
+
+  /** Verifica se o lote selecionado viola FEFO: retorna o lote correto (mais próximo do vencimento) */
+  async verificarFEFO(medicamentoId: string, loteId: string): Promise<{
+    violacao: boolean;
+    loteCorreto: { id: string; codigo_lote_fabricante: string; data_validade: string } | null;
+  }> {
+    try {
+      const { data, error } = await supabase
+        .from('lotes')
+        .select('id, codigo_lote_fabricante, data_validade')
+        .eq('medicamento_id', medicamentoId)
+        .eq('status', 'ATIVO')
+        .gt('quantidade_disponivel', 0)
+        .order('data_validade', { ascending: true });
+      if (error) throw error;
+      if (!data || data.length === 0) return { violacao: false, loteCorreto: null };
+      const loteCorreto = data[0] as { id: string; codigo_lote_fabricante: string; data_validade: string };
+      return {
+        violacao: loteCorreto.id !== loteId,
+        loteCorreto,
+      };
+    } catch (err) {
+      console.error('❌ [API Error] verificarFEFO:', err);
+      return { violacao: false, loteCorreto: null };
+    }
+  },
+
+  // --------------------------------------------------------------------------
+  // RASTREABILIDADE — Serial Numbers
+  // --------------------------------------------------------------------------
+
+  /** Lista todas as unidades serializadas de um lote */
+  async getUnidadesSeriadas(loteId: string): Promise<{
+    id: string;
+    serial_number: string;
+    status: string;
+    dispense_id: string | null;
+  }[]> {
+    try {
+      const { data, error } = await supabase
+        .from('unidades_serializadas')
+        .select('id, serial_number, status, dispense_id')
+        .eq('lote_id', loteId)
+        .order('serial_number');
+      if (error) throw error;
+      return data ?? [];
+    } catch (err) {
+      console.error('❌ [API Error] getUnidadesSeriadas:', err);
+      return [];
+    }
+  },
+
+  /** Rastreia um S/N: retorna fornecedor, custo de compra, CPF do paciente e data de dispensação */
+  async rastrearPorSerial(serial: string): Promise<{
+    serial_number: string;
+    status: string;
+    lote_codigo: string;
+    data_validade: string;
+    custo_unitario: number;
+    medicamento_nome: string;
+    fornecedor_nome: string | null;
+    paciente_cpf: string | null;
+    paciente_nome: string | null;
+    data_dispensacao: string | null;
+  } | null> {
+    try {
+      // Busca a unidade serializada com seu lote e medicamento
+      const { data: unidade, error: errU } = await supabase
+        .from('unidades_serializadas')
+        .select('id, serial_number, status, dispense_id, lote_id')
+        .eq('serial_number', serial)
+        .maybeSingle();
+      if (errU) throw errU;
+      if (!unidade) return null;
+
+      // Busca o lote com medicamento e fornecedor preferencial
+      const { data: lote, error: errL } = await supabase
+        .from('lotes')
+        .select('codigo_lote_fabricante, data_validade, custo_unitario, medicamento_id')
+        .eq('id', unidade.lote_id)
+        .maybeSingle();
+      if (errL || !lote) throw errL;
+
+      const { data: med, error: errM } = await supabase
+        .from('medicamentos')
+        .select('nome, fornecedor_preferencial_id')
+        .eq('id', lote.medicamento_id)
+        .maybeSingle();
+      if (errM) throw errM;
+
+      let fornecedor_nome: string | null = null;
+      if (med?.fornecedor_preferencial_id) {
+        const { data: forn } = await supabase
+          .from('fornecedores')
+          .select('razao_social')
+          .eq('id', med.fornecedor_preferencial_id)
+          .maybeSingle();
+        fornecedor_nome = forn?.razao_social ?? null;
+      }
+
+      let paciente_cpf: string | null = null;
+      let paciente_nome: string | null = null;
+      let data_dispensacao: string | null = null;
+
+      if (unidade.dispense_id) {
+        const { data: dispense } = await supabase
+          .from('dispensacoes')
+          .select('created_at, paciente_id')
+          .eq('id', unidade.dispense_id)
+          .maybeSingle();
+        if (dispense) {
+          data_dispensacao = dispense.created_at;
+          const { data: pac } = await supabase
+            .from('pacientes')
+            .select('cpf, nome_completo')
+            .eq('id', dispense.paciente_id)
+            .maybeSingle();
+          paciente_cpf = pac?.cpf ?? null;
+          paciente_nome = pac?.nome_completo ?? null;
+        }
+      }
+
+      return {
+        serial_number: unidade.serial_number,
+        status: unidade.status,
+        lote_codigo: lote.codigo_lote_fabricante,
+        data_validade: lote.data_validade,
+        custo_unitario: lote.custo_unitario,
+        medicamento_nome: med?.nome ?? '',
+        fornecedor_nome,
+        paciente_cpf,
+        paciente_nome,
+        data_dispensacao,
+      };
+    } catch (err) {
+      console.error('❌ [API Error] rastrearPorSerial:', err);
+      return null;
+    }
+  },
+
+  // --------------------------------------------------------------------------
+  // CRM PACIENTE — Timeline + Investimento + Adesão
+  // --------------------------------------------------------------------------
+
+  /** Timeline cronológica reversa de dispensações de um paciente */
+  async getTimelineDispensacoes(pacienteId: string): Promise<{
+    id: string;
+    created_at: string;
+    status: string;
+    medicamento_nome: string;
+    lote_codigo: string;
+    serials: string[];
+    custo_total: number;
+  }[]> {
+    try {
+      const { data, error } = await supabase
+        .from('dispensacoes')
+        .select('id, created_at, status, itens_dispensacao(quantidade, custo_unitario_lote, lotes(codigo_lote_fabricante, medicamentos(nome)))')
+        .eq('paciente_id', pacienteId)
+        .order('created_at', { ascending: false });
+      if (error) throw error;
+
+      const result = await Promise.all((data ?? []).map(async (d: any) => {
+        const { data: seriais } = await supabase
+          .from('unidades_serializadas')
+          .select('serial_number')
+          .eq('dispense_id', d.id);
+        const itens = d.itens_dispensacao ?? [];
+        const custo_total = itens.reduce((acc: number, item: any) =>
+          acc + (item.quantidade ?? 1) * (item.custo_unitario_lote ?? 0), 0);
+        const primeiroItem = itens[0];
+        return {
+          id: d.id,
+          created_at: d.created_at,
+          status: d.status,
+          medicamento_nome: primeiroItem?.lotes?.medicamentos?.nome ?? '—',
+          lote_codigo: primeiroItem?.lotes?.codigo_lote_fabricante ?? '—',
+          serials: (seriais ?? []).map((s: any) => s.serial_number),
+          custo_total,
+        };
+      }));
+      return result;
+    } catch (err) {
+      console.error('❌ [API Error] getTimelineDispensacoes:', err);
+      return [];
+    }
+  },
+
+  /** Σ(Qi × Vu_lote) — Investimento real baseado no custo do lote dispensado */
+  async calcularInvestimentoPaciente(pacienteId: string): Promise<number> {
+    try {
+      const { data, error } = await supabase
+        .from('itens_dispensacao')
+        .select('quantidade, custo_unitario_lote, dispensacoes!inner(paciente_id)')
+        .eq('dispensacoes.paciente_id', pacienteId);
+      if (error) throw error;
+      return (data ?? []).reduce((acc: number, item: any) =>
+        acc + (item.quantidade ?? 1) * (item.custo_unitario_lote ?? 0), 0);
+    } catch (err) {
+      console.error('❌ [API Error] calcularInvestimentoPaciente:', err);
+      return 0;
+    }
+  },
+
+  /** (dispensações_recebidas / programadas) × 100 */
+  async calcularIndiceAdesao(pacienteId: string): Promise<number> {
+    try {
+      const { count: total } = await supabase
+        .from('dispensacoes')
+        .select('*', { count: 'exact', head: true })
+        .eq('paciente_id', pacienteId);
+      const { count: recebidas } = await supabase
+        .from('dispensacoes')
+        .select('*', { count: 'exact', head: true })
+        .eq('paciente_id', pacienteId)
+        .eq('status', 'DISPENSADO');
+      if (!total || total === 0) return 0;
+      return Math.round(((recebidas ?? 0) / total) * 100);
+    } catch (err) {
+      console.error('❌ [API Error] calcularIndiceAdesao:', err);
+      return 0;
+    }
+  },
+
+  // --------------------------------------------------------------------------
+  // RECALL — Cascata real + WhatsApp
+  // --------------------------------------------------------------------------
+
+  /** Inicia recall de um lote: muda status, bloqueia picking, retorna pacientes afetados */
+  async iniciarRecall(loteId: string, motivo: string): Promise<{
+    pacientesAfetados: { id: string; nome_completo: string; cpf: string; telefone: string | null }[];
+  }> {
+    try {
+      // 1) Atualizar status do lote para RECALL
+      const { error: errLote } = await supabase
+        .from('lotes')
+        .update({ status: 'RECALL' })
+        .eq('id', loteId);
+      if (errLote) throw errLote;
+
+      // 2) Bloquear unidades serializadas deste lote
+      await supabase
+        .from('unidades_serializadas')
+        .update({ status: 'BLOQUEADO' })
+        .eq('lote_id', loteId)
+        .neq('status', 'DISPENSADO');
+
+      // 3) Registrar auditoria
+      await supabase.from('auditoria_logs').insert({
+        acao: 'RECALL_INICIADO',
+        tabela_afetada: 'lotes',
+        registro_id: loteId,
+        dados_novos: { motivo, status: 'RECALL' },
+        severidade: 'CRITICA',
+      });
+
+      // 4) Buscar pacientes afetados via dispensações que consumiram este lote
+      const { data: seriais } = await supabase
+        .from('unidades_serializadas')
+        .select('dispense_id')
+        .eq('lote_id', loteId)
+        .eq('status', 'DISPENSADO');
+
+      const dispenseIds = [...new Set((seriais ?? [])
+        .map((s: any) => s.dispense_id)
+        .filter(Boolean))];
+
+      if (dispenseIds.length === 0) return { pacientesAfetados: [] };
+
+      const { data: dispensacoes } = await supabase
+        .from('dispensacoes')
+        .select('paciente_id')
+        .in('id', dispenseIds);
+
+      const pacienteIds = [...new Set((dispensacoes ?? []).map((d: any) => d.paciente_id))];
+
+      const { data: pacientes } = await supabase
+        .from('pacientes')
+        .select('id, nome_completo, cpf, telefone')
+        .in('id', pacienteIds);
+
+      return { pacientesAfetados: pacientes ?? [] };
+    } catch (err) {
+      console.error('❌ [API Error] iniciarRecall:', err);
+      throw err;
+    }
+  },
+
+  /** Envia alerta WhatsApp inserindo na fila de notificações */
+  async enviarAlertaWhatsApp(pacienteId: string, mensagem: string): Promise<void> {
+    try {
+      const { error } = await supabase.from('notificacoes_fila').insert({
+        paciente_id: pacienteId,
+        mensagem,
+        canal: 'WHATSAPP',
+        status: 'PENDENTE',
+      });
+      if (error) throw error;
+    } catch (err) {
+      console.error('❌ [API Error] enviarAlertaWhatsApp:', err);
+      throw err;
+    }
+  },
+
+  // --------------------------------------------------------------------------
+  // LOGÍSTICA — Temperatura da Rota
+  // --------------------------------------------------------------------------
+
+  /** Leituras de temperatura registradas durante a entrega */
+  async getTemperaturaRota(entregaId: string): Promise<{
+    id: string;
+    temperatura: number;
+    timestamp: string;
+    lat: number | null;
+    lng: number | null;
+  }[]> {
+    try {
+      const { data, error } = await supabase
+        .from('temperatura_leituras')
+        .select('id, temperatura, timestamp, lat, lng')
+        .eq('entrega_id', entregaId)
+        .order('timestamp', { ascending: true });
+      if (error) throw error;
+      return data ?? [];
+    } catch (err) {
+      console.error('❌ [API Error] getTemperaturaRota:', err);
+      return [];
+    }
+  },
 };
