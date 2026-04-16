@@ -443,6 +443,40 @@ export const api = {
     }
   },
 
+  async getPrescricoesByPaciente(pacienteId: string): Promise<{
+    id: string;
+    medicamento_id: string;
+    medicamento_nome: string;
+    data_vencimento_receita: string;
+    status_receita: 'ATIVA' | 'VENCIDA';
+    frequencia_entrega: number;
+    quantidade_dispensada_padrao: number;
+    dosagem_prescrita: string | null;
+  }[]> {
+    try {
+      const { data, error } = await supabase
+        .from('prescricoes')
+        .select('id, medicamento_id, data_vencimento_receita, frequencia_entrega, quantidade_dispensada_padrao, dosagem_prescrita, medicamentos(nome)')
+        .eq('paciente_id', pacienteId)
+        .order('data_vencimento_receita', { ascending: false });
+      if (error) throw error;
+      const hoje = new Date().toISOString().split('T')[0];
+      return (data || []).map((p: any) => ({
+        id: p.id,
+        medicamento_id: p.medicamento_id,
+        medicamento_nome: p.medicamentos?.nome ?? '—',
+        data_vencimento_receita: p.data_vencimento_receita,
+        status_receita: p.data_vencimento_receita >= hoje ? 'ATIVA' : 'VENCIDA',
+        frequencia_entrega: p.frequencia_entrega ?? 30,
+        quantidade_dispensada_padrao: p.quantidade_dispensada_padrao ?? 1,
+        dosagem_prescrita: p.dosagem_prescrita ?? null,
+      }));
+    } catch (err) {
+      console.error('❌ [API Error] getPrescricoesByPaciente:', err);
+      return [];
+    }
+  },
+
   async getPacienteById(id: string): Promise<Paciente | null> {
     try {
       const { data, error } = await supabase
