@@ -1189,6 +1189,32 @@ export const api = {
     }
   },
 
+  // --------------------------------------------------------------------------
+  // LOGÍSTICA — Temperatura da Rota (cadeia de frio real)
+  // --------------------------------------------------------------------------
+
+  /** Leituras de temperatura registradas durante a entrega */
+  async getTemperaturaRota(entregaId: string): Promise<{
+    id: string;
+    temperatura: number;
+    timestamp: string;
+    lat: number | null;
+    lng: number | null;
+  }[]> {
+    try {
+      const { data, error } = await supabase
+        .from('temperatura_leituras')
+        .select('id, temperatura, timestamp, lat, lng')
+        .eq('entrega_id', entregaId)
+        .order('timestamp', { ascending: true });
+      if (error) throw error;
+      return data ?? [];
+    } catch (err) {
+      console.error('❌ [API Error] getTemperaturaRota:', err);
+      return [];
+    }
+  },
+
 }; // fim api
 
 /** Utilitário: distância haversine em km entre dois pontos geográficos */
