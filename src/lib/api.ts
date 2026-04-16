@@ -167,17 +167,47 @@ export const api = {
     catmat_codigo: string | null;
   }[]> {
     try {
-      const { data } = await supabase
+      // Busca na tabela CMED (preços teto) — sempre
+      const cmedPromise = supabase
         .from('cmed_referencia')
         .select('produto, apresentacao, substancia, laboratorio, pmc_17, pf_17, classe_terapeutica, catmat_codigo')
         .or(`produto.ilike.%${termo}%,substancia.ilike.%${termo}%,catmat_codigo.ilike.%${termo}%`)
         .order('produto')
         .limit(8);
-      return data ?? [];
+
+      // Busca na tabela CATMAT importada — por codigo_br ou nome_produto
+      const catmatPromise = supabase
+        .from('catmat_medicamentos')
+        .select('codigo_br, nome_produto, apresentacao, unidade_fornecimento')
+        .or(`codigo_br.ilike.%${termo}%,nome_produto.ilike.%${termo}%`)
+        .limit(8);
+
+      const [cmedRes, catmatRes] = await Promise.all([cmedPromise, catmatPromise]);
+
+      const cmedData = cmedRes.data ?? [];
+
+      // Converte resultado CATMAT para o mesmo formato da lista de sugestões
+      const catmatData = (catmatRes.data ?? []).map(c => ({
+        produto: c.nome_produto ?? c.codigo_br,
+        apresentacao: c.apresentacao ?? c.unidade_fornecimento ?? null,
+        substancia: null,
+        laboratorio: null,
+        pmc_17: null,
+        pf_17: null,
+        classe_terapeutica: null,
+        catmat_codigo: c.codigo_br,
+      }));
+
+      // Mescla evitando duplicatas por catmat_codigo
+      const vistos = new Set<string>(cmedData.map(d => d.catmat_codigo ?? '').filter(Boolean));
+      const extras = catmatData.filter(c => !vistos.has(c.catmat_codigo ?? ''));
+
+      return [...cmedData, ...extras].slice(0, 12);
     } catch {
       return [];
     }
   },
+
 
   async getEstoqueBase(): Promise<Medicamento[]> {
     try {
