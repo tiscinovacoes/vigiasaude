@@ -597,6 +597,43 @@ export default function MotoristaDashboardPage() {
             </div>
           </CardHeader>
           <CardContent>
+            {/* BANNER DE RECALL */}
+            {(() => {
+              const itensRecall = performance.inventarioBordo.filter((i) => i.status === 'RECALL');
+              if (!itensRecall.length) return null;
+              return (
+                <div className="mb-4 flex items-start gap-3 bg-red-50 border border-red-300 rounded-lg px-4 py-3">
+                  <ShieldAlert className="w-5 h-5 text-red-600 shrink-0 mt-0.5 animate-pulse" />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-bold text-red-700">
+                      ⚠️ ALERTA DE RECALL SANITÁRIO
+                    </p>
+                    <p className="text-xs text-red-600 mt-0.5">
+                      <strong>{itensRecall.length}</strong> unidade(s) no bordo estão em status de RECALL.
+                      Não realize a entrega desses itens. Retorne-os imediatamente ao depósito e
+                      contate a supervisão.
+                    </p>
+                    <div className="mt-2 flex flex-wrap gap-1">
+                      {itensRecall.map((i) => (
+                        <span
+                          key={i.serialNumber}
+                          className="inline-flex items-center gap-1 bg-red-100 border border-red-200 rounded px-2 py-0.5 text-xs font-mono text-red-700"
+                        >
+                          {i.serialNumber} — {i.medicamento}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                  <a
+                    href="/dashboard/recall"
+                    className="shrink-0 text-xs font-semibold text-red-700 underline hover:text-red-900"
+                  >
+                    Ver Recall →
+                  </a>
+                </div>
+              );
+            })()}
+
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
@@ -671,12 +708,14 @@ export default function MotoristaDashboardPage() {
                       <td className="py-3 px-2 text-center">
                         <Badge
                           className={`text-xs ${
-                            item.status === 'Em trânsito'
+                            item.status === 'RECALL'
+                              ? 'bg-red-100 text-red-700 border-red-300 font-bold'
+                              : item.status === 'Em trânsito'
                               ? 'bg-blue-50 text-blue-700 border-blue-200'
                               : 'bg-gray-50 text-gray-700 border-gray-200'
                           }`}
                         >
-                          {item.status}
+                          {item.status === 'RECALL' ? '⚠️ RECALL' : item.status}
                         </Badge>
                       </td>
                     </tr>
