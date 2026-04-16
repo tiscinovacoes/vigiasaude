@@ -164,12 +164,13 @@ export const api = {
     pmc_17: number | null;
     pf_17: number | null;
     classe_terapeutica: string | null;
+    catmat_codigo: string | null;
   }[]> {
     try {
       const { data } = await supabase
         .from('cmed_referencia')
-        .select('produto, apresentacao, substancia, laboratorio, pmc_17, pf_17, classe_terapeutica')
-        .or(`produto.ilike.%${termo}%,substancia.ilike.%${termo}%`)
+        .select('produto, apresentacao, substancia, laboratorio, pmc_17, pf_17, classe_terapeutica, catmat_codigo')
+        .or(`produto.ilike.%${termo}%,substancia.ilike.%${termo}%,catmat_codigo.ilike.%${termo}%`)
         .order('produto')
         .limit(8);
       return data ?? [];

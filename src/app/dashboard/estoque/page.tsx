@@ -36,6 +36,7 @@ import {
   User,
   Building2,
   CalendarClock,
+  UploadCloud,
 } from 'lucide-react';
 import { 
   Table, 
@@ -84,6 +85,8 @@ function EstoqueContent() {
   const [cmdBusca, setCmdBusca] = useState('');
   const [serialMode, setSerialMode] = useState(false);
   const [serialLoading, setSerialLoading] = useState(false);
+  const [catmatImporting, setCatmatImporting] = useState(false);
+  const catmatFileInputRef = useRef<HTMLInputElement>(null);
   const [serialResult, setSerialResult] = useState<{
     serial_number: string; status: string; lote_codigo: string;
     data_validade: string; custo_unitario: number; medicamento_nome: string;
@@ -96,7 +99,7 @@ function EstoqueContent() {
     nome: '', dosagem: '', preco_teto_cmed: ''
   });
   const [suggestoes, setSuggestoes] = useState<Medicamento[]>([]);
-  const [suggestoesCmed, setSuggestoesCmed] = useState<{ produto: string; apresentacao: string | null; substancia: string | null; laboratorio: string | null; pmc_17: number | null; pf_17: number | null; classe_terapeutica: string | null }[]>([]);
+  const [suggestoesCmed, setSuggestoesCmed] = useState<{ produto: string; apresentacao: string | null; substancia: string | null; laboratorio: string | null; pmc_17: number | null; pf_17: number | null; classe_terapeutica: string | null; catmat_codigo: string | null }[]>([]);
   const [showSuggestoes, setShowSuggestoes] = useState(false);
   const [medExistente, setMedExistente] = useState<Medicamento | null>(null);
   const [fornecedores, setFornecedores] = useState<{ id: string; razao_social: string }[]>([]);
@@ -112,7 +115,7 @@ function EstoqueContent() {
   // States para autocomplete da Nova Entrada
   const [buscaEntrada, setBuscaEntrada] = useState('');
   const [suggestoesEntrada, setSuggestoesEntrada] = useState<Medicamento[]>([]);
-  const [suggestoesCmedEntrada, setSuggestoesCmedEntrada] = useState<{ produto: string; apresentacao: string | null; substancia: string | null; laboratorio: string | null; pmc_17: number | null; pf_17: number | null; classe_terapeutica: string | null }[]>([]);
+  const [suggestoesCmedEntrada, setSuggestoesCmedEntrada] = useState<{ produto: string; apresentacao: string | null; substancia: string | null; laboratorio: string | null; pmc_17: number | null; pf_17: number | null; classe_terapeutica: string | null; catmat_codigo: string | null }[]>([]);
   const [showSuggestoesEntrada, setShowSuggestoesEntrada] = useState(false);
   const [entradaMedNome, setEntradaMedNome] = useState('');
 
@@ -320,6 +323,29 @@ function EstoqueContent() {
     }
   }
 
+  async function handleCatmatImport(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    e.target.value = '';
+    setCatmatImporting(true);
+    const toastId = toast.loading('Importando CATMAT...');
+    try {
+      const fd = new FormData();
+      fd.append('file', file);
+      const res = await fetch('/api/catmat/import', { method: 'POST', body: fd });
+      const json = await res.json();
+      if (res.ok && json.success) {
+        toast.success(`CATMAT: ${json.inseridos} itens importados`, { id: toastId });
+      } else {
+        toast.error(json.error ?? 'Erro ao importar CATMAT', { id: toastId });
+      }
+    } catch (err: any) {
+      toast.error('Erro de conexão: ' + (err.message ?? ''), { id: toastId });
+    } finally {
+      setCatmatImporting(false);
+    }
+  }
+
   return (
     <div className="p-6 space-y-6 bg-slate-50 min-h-full">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
@@ -349,6 +375,26 @@ function EstoqueContent() {
           >
             <ArrowDownToLine className="w-5 h-5 mr-2" />
             Registrar Saída
+          </Button>
+          {/* Importar CATMAT */}
+          <input
+            ref={catmatFileInputRef}
+            type="file"
+            accept=".csv"
+            className="hidden"
+            onChange={handleCatmatImport}
+          />
+          <Button
+            onClick={() => catmatFileInputRef.current?.click()}
+            disabled={catmatImporting}
+            variant="outline"
+            className="border-purple-600 text-purple-700 hover:bg-purple-50 font-black h-11 px-6 rounded-xl"
+          >
+            {catmatImporting
+              ? <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+              : <UploadCloud className="w-4 h-4 mr-2" />
+            }
+            Importar CATMAT
           </Button>
         </div>
       </div>
@@ -640,6 +686,7 @@ function EstoqueContent() {
                                 {c.apresentacao && <span className="text-[10px] text-slate-400">{c.apresentacao.slice(0, 50)}</span>}
                                 {c.pf_17 && <span className="text-[10px] font-bold text-emerald-600">PF R$ {c.pf_17.toFixed(2)}</span>}
                                 {c.pmc_17 && <span className="text-[10px] font-bold text-blue-600">PMC R$ {c.pmc_17.toFixed(2)}</span>}
+                                {c.catmat_codigo && <span className="text-[10px] font-bold text-purple-600">CATMAT {c.catmat_codigo}</span>}
                                 {c.laboratorio && <span className="text-[10px] text-slate-400">{c.laboratorio}</span>}
                               </div>
                             </button>
@@ -814,6 +861,7 @@ function EstoqueContent() {
                                 {c.apresentacao && <span className="text-[10px] text-slate-400">{c.apresentacao.slice(0, 50)}</span>}
                                 {c.pf_17 && <span className="text-[10px] font-bold text-emerald-600">PF R$ {c.pf_17.toFixed(2)}</span>}
                                 {c.pmc_17 && <span className="text-[10px] font-bold text-blue-600">PMC R$ {c.pmc_17.toFixed(2)}</span>}
+                                {c.catmat_codigo && <span className="text-[10px] font-bold text-purple-600">CATMAT {c.catmat_codigo}</span>}
                                 {c.laboratorio && <span className="text-[10px] text-slate-400">{c.laboratorio}</span>}
                               </div>
                             </button>
