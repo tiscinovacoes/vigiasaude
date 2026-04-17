@@ -9,12 +9,22 @@ import { NextRequest, NextResponse } from 'next/server';
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { medicamento_id, codigo_lote, data_validade, quantidade, custo_unitario, fornecedor_id } = body;
+    const {
+      medicamento_id,
+      codigo_lote,
+      data_validade,
+      quantidade,
+      custo_unitario,
+      fornecedor_id,
+      data_entrada,           // NOVO: data da entrada no estoque
+      compra_id,              // NOVO: vincula com pedido de compra
+      data_solicitacao_compra // NOVO: data do pedido (para cálculo de lead time)
+    } = body;
 
     // Validação básica
-    if (!medicamento_id || !codigo_lote || !data_validade || !quantidade || custo_unitario == null) {
+    if (!medicamento_id || !codigo_lote || !data_validade || !quantidade || custo_unitario == null || !fornecedor_id) {
       return NextResponse.json(
-        { success: false, error: 'Campos obrigatórios: medicamento_id, codigo_lote, data_validade, quantidade, custo_unitario' },
+        { success: false, error: 'Campos obrigatórios: medicamento_id, codigo_lote, data_validade, quantidade, custo_unitario, fornecedor_id' },
         { status: 400 }
       );
     }
@@ -35,6 +45,8 @@ export async function POST(request: NextRequest) {
     });
 
     // Inserir lote
+    const dataEntradaFinal = data_entrada || new Date().toISOString().split('T')[0];
+
     const { data, error } = await supabaseAdmin
       .from('lotes')
       .insert([{
@@ -44,7 +56,10 @@ export async function POST(request: NextRequest) {
         quantidade_disponivel: quantidade,
         quantidade_recebida: quantidade,
         custo_unitario,
-        ...(fornecedor_id ? { fornecedor_id } : {}),
+        fornecedor_id,
+        data_entrada: dataEntradaFinal,              // NOVO
+        compra_id: compra_id || null,                // NOVO
+        data_solicitacao_compra: data_solicitacao_compra || null,  // NOVO
         status: 'ATIVO'
       }])
       .select()

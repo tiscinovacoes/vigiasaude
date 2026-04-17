@@ -151,6 +151,7 @@ export default function ComprasPage() {
     fornecedor_id: '',
     quantidade: '',
     valor_unitario: '',
+    data_solicitacao: '',        // ← NOVO: data do pedido (obrigatório)
     data_entrega_prevista: '',
   });
 
@@ -234,8 +235,8 @@ export default function ComprasPage() {
   };
 
   const handleSubmit = async () => {
-    if (!form.medicamento_id || !form.fornecedor_id || !form.quantidade || !form.valor_unitario) {
-      toast.error('Preencha todos os campos obrigatórios');
+    if (!form.medicamento_id || !form.fornecedor_id || !form.quantidade || !form.valor_unitario || !form.data_solicitacao) {
+      toast.error('❌ Preencha todos os campos obrigatórios (incluindo Data do Pedido)');
       return;
     }
     setSubmitting(true);
@@ -244,6 +245,7 @@ export default function ComprasPage() {
       fornecedor_id: form.fornecedor_id,
       quantidade: Number(form.quantidade),
       valor_unitario: parseFloat(form.valor_unitario.replace(',', '.')),
+      data_solicitacao: form.data_solicitacao,  // ← NOVO (obrigatório)
       data_entrega_prevista: form.data_entrega_prevista || undefined,
     });
     setSubmitting(false);
@@ -252,10 +254,10 @@ export default function ComprasPage() {
       if (res.alerta) {
         toast.warning(res.alerta, { duration: 6000 });
       } else {
-        toast.success('Compra registrada com sucesso!');
+        toast.success('✅ Compra registrada com sucesso!');
       }
       setShowModal(false);
-      setForm({ medicamento_id: '', fornecedor_id: '', quantidade: '', valor_unitario: '', data_entrega_prevista: '' });
+      setForm({ medicamento_id: '', fornecedor_id: '', quantidade: '', valor_unitario: '', data_solicitacao: '', data_entrega_prevista: '' });
       setValidacao(null);
       fetchData();
     } else {
@@ -531,16 +533,32 @@ export default function ComprasPage() {
               {/* Painel de conformidade em tempo real */}
               <PainelConformidade validacao={validacao} valorUnitario={valorFloat} />
 
-              {/* Data prevista */}
-              <div>
-                <label className="text-[10px] font-black text-slate-400 uppercase mb-1.5 block">
-                  Data Prevista de Entrega
-                </label>
-                <Input
-                  type="date"
-                  value={form.data_entrega_prevista}
-                  onChange={e => handleFormChange('data_entrega_prevista', e.target.value)}
-                />
+              {/* Datas do pedido */}
+              <div className="grid grid-cols-2 gap-4">
+                {/* Data do Pedido */}
+                <div>
+                  <label className="text-[10px] font-black text-slate-400 uppercase mb-1.5 block">
+                    Data do Pedido *
+                  </label>
+                  <Input
+                    type="date"
+                    value={form.data_solicitacao}
+                    onChange={e => handleFormChange('data_solicitacao', e.target.value)}
+                    required
+                  />
+                </div>
+
+                {/* Data prevista de entrega */}
+                <div>
+                  <label className="text-[10px] font-black text-slate-400 uppercase mb-1.5 block">
+                    Data Prevista de Entrega
+                  </label>
+                  <Input
+                    type="date"
+                    value={form.data_entrega_prevista}
+                    onChange={e => handleFormChange('data_entrega_prevista', e.target.value)}
+                  />
+                </div>
               </div>
 
               {/* Submit */}

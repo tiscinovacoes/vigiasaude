@@ -104,7 +104,10 @@ function EstoqueContent() {
   const [medExistente, setMedExistente] = useState<Medicamento | null>(null);
   const [fornecedores, setFornecedores] = useState<{ id: string; razao_social: string }[]>([]);
   const [formEntrada, setFormEntrada] = useState({
-    med_id: '', lote: '', validade: '', qtd: '', preco: '', fornecedor_id: ''
+    med_id: '', lote: '', validade: '', qtd: '', preco: '', fornecedor_id: '',
+    data_entrada: '',              // NOVO: data de entrada no estoque
+    compra_id: '',                 // NOVO: vincular com compra
+    data_solicitacao_compra: ''    // NOVO: data da compra (para cálculo de lead time)
   });
   const [formSaida, setFormSaida] = useState({
     lote_id: '', qtd: '', motivo: 'Dispensação Manual', destino: '', justificativa_fefo: ''
@@ -260,8 +263,8 @@ function EstoqueContent() {
   }
 
   async function handleEntrada() {
-    if (!formEntrada.med_id || !formEntrada.lote || !formEntrada.qtd || !formEntrada.preco) {
-      toast.error("Preencha todos os campos obrigatórios");
+    if (!formEntrada.med_id || !formEntrada.lote || !formEntrada.qtd || !formEntrada.preco || !formEntrada.fornecedor_id) {
+      toast.error("❌ Preencha todos os campos obrigatórios (incluindo Fornecedor)");
       return;
     }
     const res = await api.registrarEntrada({
@@ -270,13 +273,19 @@ function EstoqueContent() {
       data_validade: formEntrada.validade,
       quantidade: Number(formEntrada.qtd),
       custo_unitario: Number(formEntrada.preco),
-      ...(formEntrada.fornecedor_id ? { fornecedor_id: formEntrada.fornecedor_id } : {}),
+      fornecedor_id: formEntrada.fornecedor_id,
+      data_entrada: formEntrada.data_entrada || undefined,        // NOVO
+      compra_id: formEntrada.compra_id || undefined,              // NOVO
+      data_solicitacao_compra: formEntrada.data_solicitacao_compra || undefined,  // NOVO
     });
 
     if (res.success) {
-      toast.success("Entrada registrada e auditada com sucesso!");
+      const msg = res.leadTimeDias !== undefined
+        ? `✅ Entrada registrada! Lead time: ${res.leadTimeDias} dias`
+        : '✅ Entrada registrada e auditada com sucesso!';
+      toast.success(msg);
       setShowNovaEntrada(false);
-      setFormEntrada({ med_id: '', lote: '', validade: '', qtd: '', preco: '', fornecedor_id: '' });
+      setFormEntrada({ med_id: '', lote: '', validade: '', qtd: '', preco: '', fornecedor_id: '', data_entrada: '', compra_id: '', data_solicitacao_compra: '' });
       setValidacaoEntrada(null);
       setEntradaMedNome('');
       setBuscaEntrada('');
@@ -899,7 +908,7 @@ function EstoqueContent() {
                </div>
                <div>
                   <label className="text-[10px] font-black text-slate-400 uppercase mb-1.5 block flex items-center gap-1">
-                    Fornecedor
+                    Fornecedor *
                     <Truck size={10} className="text-slate-400" />
                   </label>
                   <Select onValueChange={v => setFormEntrada({...formEntrada, fornecedor_id: v})}>
@@ -915,6 +924,40 @@ function EstoqueContent() {
                     </SelectContent>
                   </Select>
                </div>
+
+               {/* Rastreamento de Lead Time */}
+               <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 space-y-3">
+                  <p className="text-[10px] font-black text-blue-700 uppercase flex items-center gap-1">
+                     <CalendarClock size={12} /> Rastreamento de Lead Time (Opcional)
+                  </p>
+                  <div className="grid grid-cols-2 gap-3">
+                     <div>
+                        <label className="text-[10px] font-black text-slate-400 uppercase mb-1 block">Data de Entrada</label>
+                        <Input
+                           type="date"
+                           value={formEntrada.data_entrada}
+                           onChange={e => setFormEntrada({...formEntrada, data_entrada: e.target.value})}
+                        />
+                     </div>
+                     <div>
+                        <label className="text-[10px] font-black text-slate-400 uppercase mb-1 block">Data da Compra</label>
+                        <Input
+                           type="date"
+                           value={formEntrada.data_solicitacao_compra}
+                           onChange={e => setFormEntrada({...formEntrada, data_solicitacao_compra: e.target.value})}
+                        />
+                     </div>
+                  </div>
+                  <div>
+                     <label className="text-[10px] font-black text-slate-400 uppercase mb-1 block">Pedido de Compra (ID)</label>
+                     <Input
+                        placeholder="Vincular com pedido (opcional)"
+                        value={formEntrada.compra_id}
+                        onChange={e => setFormEntrada({...formEntrada, compra_id: e.target.value})}
+                     />
+                  </div>
+               </div>
+
                <div className="grid grid-cols-2 gap-4">
                   <div>
                     <label className="text-[10px] font-black text-slate-400 uppercase mb-1.5 block">Código do Lote</label>

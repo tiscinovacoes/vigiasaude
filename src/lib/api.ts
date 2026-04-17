@@ -367,7 +367,10 @@ export const api = {
     quantidade: number;
     custo_unitario: number;
     fornecedor_id?: string;
-  }): Promise<{ success: boolean; error?: string }> {
+    data_entrada?: string;        // NOVO: data de entrada no estoque
+    compra_id?: string;           // NOVO: vincula com pedido de compra
+    data_solicitacao_compra?: string;  // NOVO: data do pedido (para cálculo de lead time)
+  }): Promise<{ success: boolean; error?: string; leadTimeDias?: number }> {
     try {
       // 1. Validar teto CMED antes de inserir
       const cmed = await this.validarPrecoCmed(payload.medicamento_id, payload.custo_unitario);
@@ -383,24 +386,39 @@ export const api = {
       const result = await res.json();
       if (!result.success) throw new Error(result.error || 'Erro ao registrar entrada');
 
-      // 3. Registrar movimento no histórico automaticamente
+      // 3. Calcular lead time se houver ambas as datas
+      let leadTimeDias: number | undefined;
+      if (payload.data_solicitacao_compra && payload.data_entrada) {
+        const dataSolicitacao = new Date(payload.data_solicitacao_compra);
+        const dataEntrada = new Date(payload.data_entrada);
+        leadTimeDias = Math.floor((dataEntrada.getTime() - dataSolicitacao.getTime()) / (1000 * 60 * 60 * 24));
+
+        // Atualizar lead time do fornecedor se especificado
+        if (payload.fornecedor_id) {
+          await this.calcularLeadTimeFornecedor(payload.fornecedor_id)
+            .catch(err => console.warn('⚠️ Erro ao atualizar lead time do fornecedor:', err));
+        }
+      }
+
+      // 4. Registrar movimento no histórico automaticamente
       await this.registrarMovimentacao({
         medicamento_id: payload.medicamento_id,
         lote_id: payload.codigo_lote ? undefined : undefined, // será preenchido via SELECT posterior se necessário
         tipo: 'ENTRADA',
         quantidade: payload.quantidade,
-        origem: 'Compra',
+        origem: payload.compra_id ? `Compra ${payload.compra_id.substring(0, 8)}` : 'Compra',
         usuario: (await supabase.auth.getUser()).data?.user?.email || 'Sistema'
       }).catch(err => console.warn('⚠️ Erro ao registrar movimento de entrada:', err));
 
-      // 4. Auditoria WORM
+      // 5. Auditoria WORM
       await auditoriaAPI.log('CREATE', 'lotes', {
         ...payload,
         cmed_validation: cmed,
-        alerta_financeiro: isExcedido
+        alerta_financeiro: isExcedido,
+        lead_time_dias: leadTimeDias
       });
 
-      return { success: true };
+      return { success: true, leadTimeDias };
     } catch (err: any) {
       console.error('❌ [API Error] registrarEntrada:', err);
       return { success: false, error: err.message };
@@ -1374,9 +1392,15 @@ export const api = {
     fornecedor_id: string;
     quantidade: number;
     valor_unitario: number;
+    data_solicitacao: string; // OBRIGATÓRIO: YYYY-MM-DD
     data_entrega_prevista?: string;
   }): Promise<{ success: boolean; error?: string; alerta?: string }> {
     try {
+      // Validação de data_solicitacao
+      if (!payload.data_solicitacao) {
+        return { success: false, error: 'Data da solicitação é obrigatória (formato: YYYY-MM-DD)' };
+      }
+
       const validacao = await this.validarPrecoCompleto(payload.medicamento_id, payload.valor_unitario);
 
       // Compra sempre permitida — CMED e BPS geram alertas, nunca bloqueios
@@ -1391,7 +1415,7 @@ export const api = {
         fornecedor_id: payload.fornecedor_id,
         quantidade: payload.quantidade,
         valor_unitario: payload.valor_unitario,
-        data_solicitacao: new Date().toISOString().split('T')[0],
+        data_solicitacao: payload.data_solicitacao,
         data_entrega_prevista: payload.data_entrega_prevista || null,
         status: 'SOLICITADO',
         motivo_sugestao: alerta ?? null,
@@ -1719,6 +1743,92 @@ export const api = {
     } catch (err) {
       console.error('❌ [API Error] getSaneamentoStatus:', err);
       return { total_pacientes: 0, cns_valido: 0, cns_ausente: 0, cns_invalido: 0, percentual_integridade: 0 };
+    }
+  },
+
+  // ── FORNECEDORES — Lead Time ──────────────────────────────────────────
+
+  /** Calcular lead time médio de um fornecedor a partir de entradas de estoque */
+  async calcularLeadTimeFornecedor(fornecedorId: string): Promise<{
+    fornecedor_id: string;
+    lead_time_dias: number;
+    total_lotes: number;
+    lotes_com_data: number;
+    pontualidade_percentual: number;
+  }> {
+    try {
+      // Query: Todos os lotes do fornecedor com data_entrada e data_solicitacao
+      const { data, error } = await supabase
+        .from('lotes')
+        .select('data_entrada, data_solicitacao_compra')
+        .eq('fornecedor_id', fornecedorId)
+        .not('data_entrada', 'is', null)
+        .not('data_solicitacao_compra', 'is', null);
+
+      if (error) throw error;
+
+      if (!data || data.length === 0) {
+        return {
+          fornecedor_id: fornecedorId,
+          lead_time_dias: 0,
+          total_lotes: 0,
+          lotes_com_data: 0,
+          pontualidade_percentual: 0,
+        };
+      }
+
+      // Calcular lead time em dias para cada lote
+      const leadTimes = data.map(lote => {
+        const dataEntrada = new Date(lote.data_entrada);
+        const dataSolicitacao = new Date(lote.data_solicitacao_compra);
+        const difDias = Math.floor((dataEntrada.getTime() - dataSolicitacao.getTime()) / (1000 * 60 * 60 * 24));
+        return difDias;
+      });
+
+      // Calcular médias
+      const leadTimeMedio = Math.round(
+        leadTimes.reduce((a, b) => a + b, 0) / leadTimes.length
+      );
+
+      // Pontualidade: % de lotes que chegaram em até lead_time_esperado (estimar 15 dias)
+      const LEAD_TIME_ESPERADO = 15; // dias
+      const lotesNoPrazo = leadTimes.filter(lt => lt <= LEAD_TIME_ESPERADO).length;
+      const pontualidade = Math.round((lotesNoPrazo / leadTimes.length) * 100);
+
+      // Atualizar fornecedor com novo lead time
+      await supabase
+        .from('fornecedores')
+        .update({
+          lead_time_medio: leadTimeMedio,
+          pontualidade_percentual: pontualidade,
+        })
+        .eq('id', fornecedorId);
+
+      // Log auditoria
+      await auditoriaAPI.log('UPDATE', 'fornecedores', {
+        fornecedor_id: fornecedorId,
+        acao: 'CALCULO_LEAD_TIME',
+        lead_time_dias: leadTimeMedio,
+        pontualidade_percentual: pontualidade,
+        total_lotes_analisados: leadTimes.length,
+      });
+
+      return {
+        fornecedor_id: fornecedorId,
+        lead_time_dias: leadTimeMedio,
+        total_lotes: (await supabase.from('lotes').select('id', { count: 'exact' }).eq('fornecedor_id', fornecedorId)).count || 0,
+        lotes_com_data: leadTimes.length,
+        pontualidade_percentual: pontualidade,
+      };
+    } catch (err) {
+      console.error('❌ [API Error] calcularLeadTimeFornecedor:', err);
+      return {
+        fornecedor_id: fornecedorId,
+        lead_time_dias: 0,
+        total_lotes: 0,
+        lotes_com_data: 0,
+        pontualidade_percentual: 0,
+      };
     }
   },
 
