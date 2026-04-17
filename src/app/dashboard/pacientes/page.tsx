@@ -4,7 +4,8 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { api, type Paciente } from '@/lib/api';
 import { auditoriaAPI } from '@/lib/api';
-import { Users, Search, Plus, X, ArrowRight, UserCircle2, Clock, MapPin, PackageOpen, Phone, RefreshCw, Loader2 } from 'lucide-react';
+import { validateCNS, formatCNS } from '@/utils/validate-cns';
+import { Users, Search, Plus, X, ArrowRight, UserCircle2, Clock, MapPin, PackageOpen, Phone, RefreshCw, Loader2, CreditCard } from 'lucide-react';
 import { toast } from 'sonner';
 
 export default function ListaPacientes() {
@@ -24,6 +25,8 @@ export default function ListaPacientes() {
   const [formEndereco, setFormEndereco] = useState('');
   const [formJanela, setFormJanela] = useState('Manhã (08h - 12h)');
   const [formTelefone, setFormTelefone] = useState('');
+  const [formCartaoSus, setFormCartaoSus] = useState('');
+  const [cartaoSusError, setCartaoSusError] = useState('');
   const [selectedPaciente, setSelectedPaciente] = useState<Paciente | null>(null);
 
   const loadPacientes = async () => {
@@ -49,6 +52,8 @@ export default function ListaPacientes() {
     setFormEndereco('');
     setFormJanela('Manhã (08h - 12h)');
     setFormTelefone('');
+    setFormCartaoSus('');
+    setCartaoSusError('');
   };
 
   const fecharDrawer = () => setDrawerPaciente(null);
@@ -62,22 +67,32 @@ export default function ListaPacientes() {
     e.preventDefault();
     setSaving(true);
 
+    // Validar CNS se fornecido
+    const cnsLimpo = formCartaoSus.replace(/\D/g, '');
+    if (cnsLimpo && cnsLimpo.length === 15 && !validateCNS(cnsLimpo)) {
+      toast.error('❌ CNS inválido conforme algoritmo do Ministério da Saúde');
+      setSaving(false);
+      return;
+    }
+
     const result = await api.createPaciente({
       cpf: formCpf,
       nome_completo: formNome,
       endereco_completo: formEndereco,
       janela_entrega: formJanela,
       telefone: formTelefone || undefined,
+      cartao_sus: cnsLimpo || null,
     });
 
     if (result.success && result.data) {
       toast.success(`Paciente "${formNome}" cadastrado com sucesso!`);
-      
+
       // Log de auditoria
       await auditoriaAPI.log('CREATE', 'pacientes', {
         paciente_id: result.data.id,
         nome: formNome,
         cpf: formCpf,
+        cartao_sus: cnsLimpo || null,
       });
 
       setPacientes(prev => [...prev, result.data!]);
@@ -328,13 +343,39 @@ export default function ListaPacientes() {
               </div>
               <div>
                 <label className="text-sm font-semibold text-slate-700 block mb-1.5">Telefone</label>
-                <input 
-                  type="text" 
-                  placeholder="(67) 99999-0000" 
+                <input
+                  type="text"
+                  placeholder="(67) 99999-0000"
                   value={formTelefone}
                   onChange={(e) => setFormTelefone(e.target.value)}
-                  className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500" 
+                  className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500"
                 />
+              </div>
+              <div>
+                <label className="text-sm font-semibold text-slate-700 block mb-1.5">Cartão SUS (CNS)</label>
+                <div className="relative">
+                  <CreditCard className="absolute left-3 top-2.5 w-4 h-4 text-slate-400" />
+                  <input
+                    type="text"
+                    placeholder="000 0000 0000 0000"
+                    value={formCartaoSus}
+                    onChange={(e) => {
+                      const formatted = formatCNS(e.target.value);
+                      setFormCartaoSus(formatted);
+                    }}
+                    onBlur={() => {
+                      const cnsLimpo = formCartaoSus.replace(/\D/g, '');
+                      if (cnsLimpo.length === 15 && !validateCNS(cnsLimpo)) {
+                        setCartaoSusError('Número de Cartão SUS inválido conforme algoritmo do Ministério da Saúde');
+                        toast.error('❌ CNS inválido');
+                      } else {
+                        setCartaoSusError('');
+                      }
+                    }}
+                    className="w-full pl-10 px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+                {cartaoSusError && <p className="text-xs text-red-600 mt-1">{cartaoSusError}</p>}
               </div>
               <div>
                 <label className="text-sm font-semibold text-slate-700 block mb-1.5">Janela de Entrega Preferencial</label>

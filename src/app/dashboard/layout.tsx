@@ -22,6 +22,9 @@ import {
   ShieldCheck,
   BadgeDollarSign,
   DatabaseZap,
+  AlertTriangle,
+  BarChart4,
+  Link as LinkIcon,
 } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
@@ -37,6 +40,7 @@ const MENU_ITEMS = [
   { icon: BarChart3, label: 'Dashboard', href: '/dashboard' },
   { icon: Package, label: 'Estoque FEFO', href: '/dashboard/estoque' },
   { icon: Users, label: 'Pacientes/CRM', href: '/dashboard/pacientes' },
+  { icon: LinkIcon, label: 'Vínculo SUS', href: '/dashboard/pacientes/vinculos' },
   { icon: Truck, label: 'Monitoramento', href: '/dashboard/monitoramento' },
   { icon: ShoppingCart, label: 'Compras', href: '/dashboard/compras' },
   { icon: PackageCheck, label: 'Entregas', href: '/dashboard/entregas' },
@@ -46,6 +50,8 @@ const MENU_ITEMS = [
   { icon: ShieldCheck, label: 'Auditoria Master', href: '/dashboard/auditoria' },
   { icon: BadgeDollarSign, label: 'Conformidade CMED', href: '/dashboard/cmed' },
   { icon: DatabaseZap, label: 'Banco de Preços BPS', href: '/dashboard/bps' },
+  { icon: AlertTriangle, label: 'Inconsistências', href: '/dashboard/relatorios/inconsistencias' },
+  { icon: BarChart4, label: 'Saneamento de Dados', href: '/dashboard/saneamento' },
   { icon: FileText, label: 'Relatórios', href: '/dashboard/relatorios' },
 ];
 

@@ -1,8 +1,9 @@
 import { supabase } from './supabase';
+import { validateCNS } from '@/utils/validate-cns';
 
 /**
  * api.ts - Camada de Acesso a Dados (Supabase)
- * O sistema consome exclusivamente dados reais do Supabase. 
+ * O sistema consome exclusivamente dados reais do Supabase.
  * Tratamento de erros garantido via Exceptions que devem ser tratadas pelo Front.
  */
 
@@ -44,6 +45,7 @@ export type Paciente = {
   geolocalizacao: any;
   janela_entrega: string | null;
   telefone: string | null;
+  cartao_sus?: string | null;
   created_at: string;
 };
 
@@ -504,6 +506,7 @@ export const api = {
     endereco_completo: string;
     janela_entrega: string;
     telefone?: string;
+    cartao_sus?: string | null;
   }): Promise<{ success: boolean; data?: Paciente; error?: string }> {
     try {
       const { data, error } = await supabase
@@ -1583,6 +1586,141 @@ export const api = {
 
   // ── MOTORISTAS ── (Módulo 7 — Veículos e Entregas)
   // Funções getMotoristas(), getMotoristasById(id), getEntregasByMotorista(id) implementadas
+
+  // ── PACIENTES — Vínculo SUS (Módulo 8 — CNS) ─────────────────────────
+
+  /** Busca paciente por CPF ou Cartão SUS (prioriza CPF) */
+  async getPacienteByIdentifier(identifier: string): Promise<Paciente | null> {
+    try {
+      const clean = identifier.replace(/\D/g, '');
+
+      // Prioridade: CPF (11 dígitos)
+      if (clean.length === 11) {
+        const { data, error } = await supabase
+          .from('pacientes')
+          .select('*')
+          .eq('cpf', clean)
+          .single();
+        if (!error && data) {
+          await auditoriaAPI.log('BUSCA_IDENTIFICADOR_CPF', 'pacientes', {
+            identificador: clean,
+            encontrado: true,
+            paciente_id: (data as any).id,
+          });
+          return data as Paciente;
+        }
+      }
+      // Fallback: CNS (15 dígitos)
+      else if (clean.length === 15) {
+        const { data, error } = await supabase
+          .from('pacientes')
+          .select('*')
+          .eq('cartao_sus', clean)
+          .single();
+        if (!error && data) {
+          await auditoriaAPI.log('BUSCA_IDENTIFICADOR_CNS', 'pacientes', {
+            identificador: clean,
+            encontrado: true,
+            paciente_id: (data as any).id,
+          });
+          return data as Paciente;
+        }
+      }
+
+      await auditoriaAPI.log('BUSCA_IDENTIFICADOR_NAO_ENCONTRADO', 'pacientes', {
+        identificador: clean,
+        encontrado: false,
+      });
+      return null;
+    } catch (err) {
+      console.error('❌ [API Error] getPacienteByIdentifier:', err);
+      return null;
+    }
+  },
+
+  /** Lista pacientes com inconsistências de CNS */
+  async getInconsistencias(): Promise<{
+    id: string;
+    nome_completo: string;
+    cpf: string;
+    cartao_sus: string | null;
+    tipo_inconsistencia: 'AUSENTE' | 'INVALIDO';
+    tentativas_invalidas: number;
+    ultima_tentativa: string | null;
+  }[]> {
+    try {
+      const { data, error } = await supabase
+        .from('pacientes')
+        .select('id, nome_completo, cpf, cartao_sus')
+        .order('nome_completo');
+
+      if (error) throw error;
+
+      return (data ?? [])
+        .map((p: any) => {
+          const isInvalid = p.cartao_sus && !validateCNS(p.cartao_sus);
+          return {
+            id: p.id,
+            nome_completo: p.nome_completo,
+            cpf: p.cpf,
+            cartao_sus: p.cartao_sus,
+            tipo_inconsistencia: isInvalid ? ('INVALIDO' as const) : ('AUSENTE' as const),
+            tentativas_invalidas: 0,
+            ultima_tentativa: null,
+          };
+        })
+        .filter((p) => p.tipo_inconsistencia === 'AUSENTE' || p.tipo_inconsistencia === 'INVALIDO');
+    } catch (err) {
+      console.error('❌ [API Error] getInconsistencias:', err);
+      return [];
+    }
+  },
+
+  /** Dashboard de Saneamento — resumo de integridade CNS */
+  async getSaneamentoStatus(): Promise<{
+    total_pacientes: number;
+    cns_valido: number;
+    cns_ausente: number;
+    cns_invalido: number;
+    percentual_integridade: number;
+  }> {
+    try {
+      const { data, error } = await supabase
+        .from('pacientes')
+        .select('id, cartao_sus')
+        .order('id');
+
+      if (error) throw error;
+
+      const pacientes = data ?? [];
+      const total = pacientes.length;
+
+      let validos = 0;
+      let ausentes = 0;
+      let invalidos = 0;
+
+      pacientes.forEach((p: any) => {
+        if (!p.cartao_sus) {
+          ausentes++;
+        } else if (!validateCNS(p.cartao_sus)) {
+          invalidos++;
+        } else {
+          validos++;
+        }
+      });
+
+      return {
+        total_pacientes: total,
+        cns_valido: validos,
+        cns_ausente: ausentes,
+        cns_invalido: invalidos,
+        percentual_integridade: total > 0 ? (validos / total) * 100 : 0,
+      };
+    } catch (err) {
+      console.error('❌ [API Error] getSaneamentoStatus:', err);
+      return { total_pacientes: 0, cns_valido: 0, cns_ausente: 0, cns_invalido: 0, percentual_integridade: 0 };
+    }
+  },
 
 }; // fim api
 
