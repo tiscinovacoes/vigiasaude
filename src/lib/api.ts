@@ -217,11 +217,12 @@ export const api = {
         .order('produto')
         .limit(8);
 
-      // Busca na tabela CATMAT importada — por codigo_br ou nome_produto
+      // Busca na tabela CATMAT importada — por codigo_br ou descricao
       const catmatPromise = supabase
         .from('catmat_medicamentos')
-        .select('codigo_br, nome_produto, apresentacao, unidade_fornecimento')
-        .or(`codigo_br.ilike.%${termo}%,nome_produto.ilike.%${termo}%`)
+        .select('codigo_br, descricao, unidade_fornecimento')
+        .or(`codigo_br.ilike.%${termo}%,descricao.ilike.%${termo}%`)
+        .order('codigo_br')
         .limit(8);
 
       const [cmedRes, catmatRes] = await Promise.all([cmedPromise, catmatPromise]);
@@ -230,8 +231,8 @@ export const api = {
 
       // Converte resultado CATMAT para o mesmo formato da lista de sugestões
       const catmatData = (catmatRes.data ?? []).map(c => ({
-        produto: c.nome_produto ?? c.codigo_br,
-        apresentacao: c.apresentacao ?? c.unidade_fornecimento ?? null,
+        produto: c.descricao ?? c.codigo_br,
+        apresentacao: c.unidade_fornecimento ?? null,
         substancia: null,
         laboratorio: null,
         pmc_17: null,
