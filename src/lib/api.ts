@@ -61,7 +61,25 @@ export type Fornecedor = {
   pontualidade_percentual: number;
   lead_time_medio: number;
   valor_total_contratado: number;
+  telefone?: string | null;
+  email?: string | null;
+  endereco?: string | null;
+  responsavel?: string | null;
+  ativo?: boolean;
   created_at: string;
+};
+
+export type CompraFornecedor = {
+  id: string;
+  data_solicitacao: string | null;
+  data_entrega_prevista: string | null;
+  data_entrega_real: string | null;
+  status: string;
+  quantidade: number;
+  valor_unitario: number | null;
+  nota_fiscal: string | null;
+  medicamento_nome: string;
+  lead_time_real: number | null;
 };
 
 export type MovimentacaoEstoque = {
@@ -667,6 +685,51 @@ export const api = {
     } catch (err: any) {
       console.error('Erro ao criar fornecedor:', err);
       return { success: false, error: err?.message || 'Erro desconhecido' };
+    }
+  },
+
+  async getFornecedorById(id: string): Promise<Fornecedor | null> {
+    try {
+      const { data, error } = await supabase
+        .from('fornecedores')
+        .select('*')
+        .eq('id', id)
+        .single();
+      if (error || !data) throw error;
+      return data as Fornecedor;
+    } catch (err) {
+      console.error('❌ [API Error] getFornecedorById:', err);
+      return null;
+    }
+  },
+
+  async getComprasByFornecedor(fornecedorId: string): Promise<CompraFornecedor[]> {
+    try {
+      const { data, error } = await supabase
+        .from('compras_registro')
+        .select('id, data_solicitacao, data_entrega_prevista, data_entrega_real, status, quantidade, valor_unitario, nota_fiscal, medicamento:medicamentos(nome)')
+        .eq('fornecedor_id', fornecedorId)
+        .order('data_solicitacao', { ascending: false });
+      if (error) throw error;
+
+      const msPerDia = 1000 * 60 * 60 * 24;
+      return (data ?? []).map((c: any) => ({
+        id: c.id,
+        data_solicitacao: c.data_solicitacao,
+        data_entrega_prevista: c.data_entrega_prevista,
+        data_entrega_real: c.data_entrega_real,
+        status: c.status,
+        quantidade: c.quantidade,
+        valor_unitario: c.valor_unitario,
+        nota_fiscal: c.nota_fiscal ?? null,
+        medicamento_nome: c.medicamento?.nome ?? '—',
+        lead_time_real: c.data_solicitacao && c.data_entrega_real
+          ? Math.round((new Date(c.data_entrega_real).getTime() - new Date(c.data_solicitacao).getTime()) / msPerDia)
+          : null,
+      }));
+    } catch (err) {
+      console.error('❌ [API Error] getComprasByFornecedor:', err);
+      return [];
     }
   },
 

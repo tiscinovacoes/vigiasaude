@@ -1,16 +1,18 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { 
-  Building2, 
-  Search, 
-  Filter, 
-  Star, 
-  MapPin, 
-  Phone, 
-  Mail, 
+import {
+  Building2,
+  Search,
+  Filter,
+  Star,
+  MapPin,
+  Phone,
+  Mail,
   FileCheck,
   TrendingUp,
+  TrendingDown,
+  Minus,
   AlertCircle,
   Clock,
   ExternalLink,
@@ -19,8 +21,11 @@ import {
   Plus,
   X,
   Loader2,
-  RefreshCw
+  RefreshCw,
+  Medal,
+  Award
 } from 'lucide-react';
+import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
@@ -37,6 +42,7 @@ import { auditoriaAPI } from '@/lib/api';
 import { toast } from 'sonner';
 
 export default function FornecedoresPage() {
+  const router = useRouter();
   const [searchTerm, setSearchTerm] = useState('');
   const [fornecedores, setFornecedores] = useState<Fornecedor[]>([]);
   const [loading, setLoading] = useState(true);
@@ -209,6 +215,122 @@ export default function FornecedoresPage() {
         </div>
       </div>
 
+      {/* ── RANKING DE FORNECEDORES ────────────────────────────────────────── */}
+      {!loading && fornecedores.length > 0 && (
+        <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
+          <div className="px-6 py-4 border-b border-slate-100 bg-slate-50/50 flex items-center justify-between">
+            <h3 className="font-black text-slate-700 text-sm uppercase tracking-tight flex items-center gap-2">
+              <Medal size={16} className="text-amber-500" />
+              Ranking de Performance
+            </h3>
+            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+              Ordenado por pontualidade + lead time
+            </span>
+          </div>
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="text-[10px] font-black uppercase tracking-widest text-slate-400 border-b border-slate-100">
+                <th className="px-6 py-3 text-left w-12">#</th>
+                <th className="px-4 py-3 text-left">Fornecedor</th>
+                <th className="px-4 py-3 text-center">Pontualidade</th>
+                <th className="px-4 py-3 text-center">Lead Time</th>
+                <th className="px-4 py-3 text-center">Score</th>
+                <th className="px-4 py-3 text-center">Trend</th>
+                <th className="px-4 py-3 text-right"></th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-50">
+              {[...fornecedores]
+                .sort((a, b) => {
+                  if (b.pontualidade_percentual !== a.pontualidade_percentual)
+                    return b.pontualidade_percentual - a.pontualidade_percentual;
+                  return a.lead_time_medio - b.lead_time_medio;
+                })
+                .map((f, idx) => {
+                  const pos = idx + 1;
+                  const isCritico = f.pontualidade_percentual < 70;
+                  const isPremium = f.pontualidade_percentual >= 90;
+                  const posBadge =
+                    pos === 1 ? { bg: 'bg-amber-100 text-amber-700 border-amber-300', icon: '🥇' } :
+                    pos === 2 ? { bg: 'bg-slate-100 text-slate-600 border-slate-300',  icon: '🥈' } :
+                    pos === 3 ? { bg: 'bg-orange-100 text-orange-700 border-orange-300', icon: '🥉' } :
+                    null;
+
+                  return (
+                    <tr key={f.id} className="hover:bg-slate-50/60 transition-colors group">
+                      <td className="px-6 py-3">
+                        {posBadge ? (
+                          <span className={`text-xs font-black px-2.5 py-1 rounded-full border ${posBadge.bg}`}>
+                            {posBadge.icon} #{pos}
+                          </span>
+                        ) : (
+                          <span className="text-sm font-black text-slate-400">#{pos}</span>
+                        )}
+                      </td>
+                      <td className="px-4 py-3">
+                        <p className="font-black text-slate-800 text-sm">{f.razao_social}</p>
+                        <p className="text-[10px] text-slate-400 font-mono">{f.cnpj}</p>
+                      </td>
+                      <td className="px-4 py-3 text-center">
+                        <div className="flex flex-col items-center gap-1">
+                          <span className={`font-black text-sm ${isPremium ? 'text-emerald-600' : isCritico ? 'text-red-600' : 'text-amber-600'}`}>
+                            {f.pontualidade_percentual}%
+                          </span>
+                          <div className="w-16 h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                            <div
+                              className={`h-full rounded-full ${isPremium ? 'bg-emerald-500' : isCritico ? 'bg-red-500' : 'bg-amber-400'}`}
+                              style={{ width: `${f.pontualidade_percentual}%` }}
+                            />
+                          </div>
+                        </div>
+                      </td>
+                      <td className="px-4 py-3 text-center">
+                        <span className="font-bold text-slate-600 text-sm">
+                          {f.lead_time_medio > 0 ? `${f.lead_time_medio}d` : '—'}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 text-center">
+                        {isCritico ? (
+                          <span className="text-[10px] font-black px-2 py-0.5 rounded-full bg-red-100 text-red-700 border border-red-200 animate-pulse">
+                            🔴 CRÍTICO
+                          </span>
+                        ) : isPremium ? (
+                          <span className="text-[10px] font-black px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 border border-emerald-200">
+                            🏆 Premium
+                          </span>
+                        ) : (
+                          <span className="text-[10px] font-black px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 border border-blue-200">
+                            🔵 Regular
+                          </span>
+                        )}
+                      </td>
+                      <td className="px-4 py-3 text-center">
+                        {f.pontualidade_percentual >= 90 ? (
+                          <TrendingUp size={16} className="mx-auto text-emerald-500" />
+                        ) : f.pontualidade_percentual < 70 ? (
+                          <TrendingDown size={16} className="mx-auto text-red-500" />
+                        ) : (
+                          <Minus size={16} className="mx-auto text-slate-400" />
+                        )}
+                      </td>
+                      <td className="px-4 py-3 text-right">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => router.push(`/dashboard/fornecedores/${f.id}`)}
+                          className="text-[10px] font-black text-[#1E3A8A] hover:bg-blue-50 opacity-0 group-hover:opacity-100 transition-opacity"
+                        >
+                          Ver perfil <ExternalLink size={11} className="ml-1" />
+                        </Button>
+                      </td>
+                    </tr>
+                  );
+                })}
+            </tbody>
+          </table>
+        </div>
+      )}
+
       {/* SUPPLIERS LIST */}
       {loading ? (
         <div className="p-16 text-center">
@@ -282,7 +404,11 @@ export default function FornecedoresPage() {
                     <div className="text-xs text-slate-400 font-medium">
                       Desde {new Date(fornecedor.created_at).toLocaleDateString('pt-BR')}
                     </div>
-                    <Button variant="ghost" className="text-xs font-black text-[#1A2B6D] hover:bg-slate-100 rounded-lg">
+                    <Button
+                      variant="ghost"
+                      onClick={() => router.push(`/dashboard/fornecedores/${fornecedor.id}`)}
+                      className="text-xs font-black text-[#1A2B6D] hover:bg-slate-100 rounded-lg cursor-pointer"
+                    >
                       VER PERFIL COMPLETO <ExternalLink size={14} className="ml-2" />
                     </Button>
                   </div>
