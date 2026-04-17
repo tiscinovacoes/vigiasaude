@@ -3,7 +3,6 @@
 import { useEffect, useState } from 'react';
 import {
   BarChart3,
-  DollarSign,
   TrendingDown,
   TrendingUp,
   Search,
@@ -20,14 +19,17 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Skeleton } from '@/components/ui/skeleton';
-import { api, type Medicamento } from '@/lib/api';
 import { supabase } from '@/lib/supabase';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 
-type MedicamentoBps = Medicamento & {
+type MedicamentoBps = {
+  id: string;
+  nome: string;
+  dosagem?: string | null;
+  /** preco_teto_cmed é reutilizado como referência BPS */
+  preco_teto_cmed?: number | null;
   ultimoPreco?: number | null;
-  precoBps?: number | null;
 };
 
 export default function BpsPage() {
@@ -46,14 +48,13 @@ export default function BpsPage() {
   async function carregar() {
     setLoading(true);
     try {
-      // Consulta direta na tabela medicamentos
       const { data: meds, error: medsError } = await supabase
         .from('medicamentos')
-        .select('id, nome, dosagem, estoque_minimo, preco_teto_cmed, created_at')
+        .select('id, nome, dosagem, preco_teto_cmed')
         .order('nome');
       if (medsError || !meds) throw medsError;
 
-      // Último preço pago por medicamento
+      // Último preço pago por medicamento (da tabela compras)
       const ultimoPrecoMap: Record<string, number> = {};
       try {
         const { data: compras } = await supabase
@@ -61,22 +62,16 @@ export default function BpsPage() {
           .select('medicamento_id, valor_unitario')
           .not('valor_unitario', 'is', null)
           .order('data_solicitacao', { ascending: false });
-        compras?.forEach((c) => {
+        compras?.forEach((c: { medicamento_id: string; valor_unitario: number }) => {
           if (!ultimoPrecoMap[c.medicamento_id] && c.valor_unitario) {
             ultimoPrecoMap[c.medicamento_id] = c.valor_unitario;
           }
         });
-      } catch { /* ignora */ }
+      } catch { /* tabela pode não existir ainda */ }
 
-      // Preços BPS ficam em localStorage até migration ser criada
-      const bpsStore: Record<string, number> = JSON.parse(
-        typeof window !== 'undefined' ? localStorage.getItem('bps_precos') || '{}' : '{}'
-      );
-
-      const enriched: MedicamentoBps[] = meds.map((m: any) => ({
+      const enriched: MedicamentoBps[] = meds.map((m: MedicamentoBps) => ({
         ...m,
         ultimoPreco: ultimoPrecoMap[m.id] ?? null,
-        precoBps: bpsStore[m.id] ?? null,
       }));
 
       setMedicamentos(enriched);
@@ -87,19 +82,28 @@ export default function BpsPage() {
     }
   }
 
-  function salvarBps(med: MedicamentoBps) {
+  async function salvarBps(med: MedicamentoBps) {
     const valor = parseFloat(novoBps.replace(',', '.'));
     if (isNaN(valor) || valor <= 0) {
       toast.error('Informe um valor válido maior que zero');
       return;
     }
-    // Salva em localStorage (sem precisar de migration no banco)
-    const store: Record<string, number> = JSON.parse(localStorage.getItem('bps_precos') || '{}');
-    store[med.id] = valor;
-    localStorage.setItem('bps_precos', JSON.stringify(store));
-    toast.success(`Preço BPS salvo: R$ ${valor.toFixed(2)}`);
-    setEditandoId(null);
-    carregar();
+    setSalvando(true);
+    try {
+      const { error } = await supabase
+        .from('medicamentos')
+        .update({ preco_teto_cmed: valor })
+        .eq('id', med.id);
+      if (error) throw error;
+      toast.success(`Preço BPS salvo: R$ ${valor.toFixed(2)}`);
+      setEditandoId(null);
+      await carregar();
+    } catch (err: unknown) {
+      toast.error('Erro ao salvar preço BPS');
+      console.error(err);
+    } finally {
+      setSalvando(false);
+    }
   }
 
   const filtrados = medicamentos
@@ -109,18 +113,18 @@ export default function BpsPage() {
       return m.nome.toLowerCase().includes(q);
     })
     .filter((m) => {
-      if (filtro === 'abaixo') return m.ultimoPreco != null && m.precoBps != null && m.ultimoPreco <= m.precoBps;
-      if (filtro === 'acima') return m.ultimoPreco != null && m.precoBps != null && m.ultimoPreco > m.precoBps;
-      if (filtro === 'semBps') return m.precoBps == null;
+      if (filtro === 'abaixo') return m.ultimoPreco != null && m.preco_teto_cmed != null && m.ultimoPreco <= m.preco_teto_cmed;
+      if (filtro === 'acima') return m.ultimoPreco != null && m.preco_teto_cmed != null && m.ultimoPreco > m.preco_teto_cmed;
+      if (filtro === 'semBps') return m.preco_teto_cmed == null;
       return true;
     });
 
-  const comBps = medicamentos.filter((m) => m.precoBps != null);
-  const abaixoBps = comBps.filter((m) => m.ultimoPreco != null && m.ultimoPreco <= m.precoBps!);
-  const acimaBps = comBps.filter((m) => m.ultimoPreco != null && m.ultimoPreco > m.precoBps!);
+  const comBps = medicamentos.filter((m) => m.preco_teto_cmed != null);
+  const abaixoBps = comBps.filter((m) => m.ultimoPreco != null && m.ultimoPreco <= m.preco_teto_cmed!);
+  const acimaBps = comBps.filter((m) => m.ultimoPreco != null && m.ultimoPreco > m.preco_teto_cmed!);
   const economiaTotal = comBps.reduce((acc, m) => {
-    if (m.ultimoPreco != null && m.precoBps != null && m.ultimoPreco < m.precoBps) {
-      return acc + (m.precoBps - m.ultimoPreco);
+    if (m.ultimoPreco != null && m.preco_teto_cmed != null && m.ultimoPreco < m.preco_teto_cmed) {
+      return acc + (m.preco_teto_cmed - m.ultimoPreco);
     }
     return acc;
   }, 0);
@@ -231,8 +235,8 @@ export default function BpsPage() {
           <p className="text-sm font-bold text-[#1E293B]">Como usar o BPS</p>
           <p className="text-xs text-slate-500 mt-0.5">
             Acesse <strong>bps.saude.gov.br</strong>, busque o medicamento pelo nome ou código,
-            copie o preço de referência e registre abaixo clicando no ícone de edição. O sistema
-            calcula automaticamente a economia ou sobrepreço em relação à média nacional de compras governamentais.
+            copie o preço de referência e registre abaixo clicando no ícone de edição. O preço
+            é salvo diretamente no banco de dados e sincronizado com todos os usuários automaticamente.
           </p>
         </div>
       </div>
@@ -281,7 +285,7 @@ export default function BpsPage() {
                 <th className="text-right py-3 px-4 text-[10px] font-black uppercase tracking-widest text-slate-400">Último Preço Pago</th>
                 <th className="text-right py-3 px-4 text-[10px] font-black uppercase tracking-widest text-slate-400">Diferença</th>
                 <th className="text-center py-3 px-4 text-[10px] font-black uppercase tracking-widest text-slate-400">Status</th>
-                <th className="text-center py-3 px-4 text-[10px] font-black uppercase tracking-widest text-slate-400">Ref. BPS</th>
+                <th className="text-center py-3 px-4 text-[10px] font-black uppercase tracking-widest text-slate-400">Editar BPS</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-50">
@@ -293,10 +297,10 @@ export default function BpsPage() {
                 </tr>
               ) : (
                 filtrados.map((m) => {
-                  const acima = m.ultimoPreco != null && m.precoBps != null && m.ultimoPreco > m.precoBps;
-                  const abaixo = m.ultimoPreco != null && m.precoBps != null && m.ultimoPreco <= m.precoBps;
-                  const diff = m.ultimoPreco != null && m.precoBps != null
-                    ? ((m.ultimoPreco / m.precoBps) - 1) * 100
+                  const acima = m.ultimoPreco != null && m.preco_teto_cmed != null && m.ultimoPreco > m.preco_teto_cmed;
+                  const abaixo = m.ultimoPreco != null && m.preco_teto_cmed != null && m.ultimoPreco <= m.preco_teto_cmed;
+                  const diff = m.ultimoPreco != null && m.preco_teto_cmed != null
+                    ? ((m.ultimoPreco / m.preco_teto_cmed) - 1) * 100
                     : null;
                   const isEditando = editandoId === m.id;
 
@@ -317,14 +321,15 @@ export default function BpsPage() {
                               type="text"
                               value={novoBps}
                               onChange={(e) => setNovoBps(e.target.value)}
+                              onKeyDown={(e) => { if (e.key === 'Enter') salvarBps(m); if (e.key === 'Escape') setEditandoId(null); }}
                               className="w-24 text-right text-sm font-bold border border-emerald-500 rounded px-2 py-1 outline-none"
                               autoFocus
                               placeholder="0,00"
                             />
                           </div>
-                        ) : m.precoBps != null ? (
+                        ) : m.preco_teto_cmed != null ? (
                           <span className="font-black text-slate-700">
-                            {m.precoBps.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                            {m.preco_teto_cmed.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
                           </span>
                         ) : (
                           <span className="text-slate-300 text-xs italic">não cadastrado</span>
@@ -352,7 +357,7 @@ export default function BpsPage() {
                       </td>
 
                       <td className="py-3 px-4 text-center">
-                        {m.precoBps == null ? (
+                        {m.preco_teto_cmed == null ? (
                           <Badge className="bg-amber-100 text-amber-700 border-none text-[10px] font-black uppercase">
                             Sem Ref.
                           </Badge>
@@ -373,7 +378,7 @@ export default function BpsPage() {
                             <button
                               onClick={() => salvarBps(m)}
                               disabled={salvando}
-                              className="p-1.5 rounded bg-emerald-100 text-emerald-700 hover:bg-emerald-200 cursor-pointer"
+                              className="p-1.5 rounded bg-emerald-100 text-emerald-700 hover:bg-emerald-200 cursor-pointer disabled:opacity-50"
                             >
                               <Check className="w-3.5 h-3.5" />
                             </button>
@@ -388,7 +393,7 @@ export default function BpsPage() {
                           <button
                             onClick={() => {
                               setEditandoId(m.id);
-                              setNovoBps(m.precoBps?.toFixed(2) ?? '');
+                              setNovoBps(m.preco_teto_cmed?.toFixed(2) ?? '');
                             }}
                             className="p-1.5 rounded bg-emerald-50 text-emerald-700 hover:bg-emerald-100 cursor-pointer"
                             title="Editar preço BPS"
@@ -411,6 +416,7 @@ export default function BpsPage() {
           </div>
         )}
       </Card>
+
     </div>
   );
 }

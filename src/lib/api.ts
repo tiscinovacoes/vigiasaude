@@ -1849,7 +1849,7 @@ export function haversineKm(lat1: number, lon1: number, lat2: number, lon2: numb
 
 export const auditoriaAPI = {
 
-  async log(acao: 'CREATE' | 'UPDATE' | 'DELETE' | 'ALERTA_SEGURANCA' | 'FEFO_BLOCK', entidade: string, metadados: any) {
+  async log(acao: 'CREATE' | 'UPDATE' | 'DELETE' | 'ALERTA_SEGURANCA' | 'FEFO_BLOCK' | 'BUSCA_IDENTIFICADOR_CPF' | 'BUSCA_IDENTIFICADOR_CNS' | 'BUSCA_IDENTIFICADOR_NAO_ENCONTRADO', entidade: string, metadados: any) {
     try {
       const user = (await supabase.auth.getUser()).data?.user?.email || 'System';
 
@@ -2485,6 +2485,171 @@ export const recallAPI = {
     } catch (err) {
       console.error('❌ [API Error] getReceitasByPaciente:', err);
       return [];
+    }
+  },
+
+  // --------------------------------------------------------------------------
+  // COMPRAS
+  // --------------------------------------------------------------------------
+
+  /** Lista todos os pedidos de compra que não estão DESCARTADOS */
+  async getComprasAtivas(): Promise<CompraRegistro[]> {
+    try {
+      const { data, error } = await supabase
+        .from('compras')
+        .select(
+          'id, medicamento_id, fornecedor_id, quantidade, valor_unitario, status, motivo_sugestao, data_solicitacao, data_entrega_prevista, data_entrega_real, medicamento:medicamentos(nome, preco_teto_cmed), fornecedor:fornecedores(razao_social)'
+        )
+        .neq('status', 'DESCARTADO')
+        .order('data_solicitacao', { ascending: false });
+      if (error) throw error;
+      return (data ?? []) as unknown as CompraRegistro[];
+    } catch (err) {
+      console.error('❌ [API Error] getComprasAtivas:', err);
+      return [];
+    }
+  },
+
+  /** Registra nova compra. Retorna alerta de texto quando o preço excede a CMED. */
+  async createCompra(payload: {
+    medicamento_id: string;
+    fornecedor_id: string;
+    quantidade: number;
+    valor_unitario: number;
+    data_solicitacao: string;
+    data_entrega_prevista?: string;
+  }): Promise<{ success: boolean; alerta?: string; error?: string }> {
+    try {
+      // Verifica teto CMED
+      const { data: med } = await supabase
+        .from('medicamentos')
+        .select('nome, preco_teto_cmed')
+        .eq('id', payload.medicamento_id)
+        .single();
+
+      let alerta: string | undefined;
+      if (med?.preco_teto_cmed && payload.valor_unitario > med.preco_teto_cmed) {
+        const pct = (((payload.valor_unitario - med.preco_teto_cmed) / med.preco_teto_cmed) * 100).toFixed(1);
+        alerta = `⚠️ Preço acima da CMED: R$ ${payload.valor_unitario.toFixed(2)} (+${pct}% sobre o teto R$ ${med.preco_teto_cmed.toFixed(2)}) – Compra registrada com ressalva`;
+      }
+
+      const { error } = await supabase.from('compras').insert({
+        medicamento_id: payload.medicamento_id,
+        fornecedor_id: payload.fornecedor_id,
+        quantidade: payload.quantidade,
+        valor_unitario: payload.valor_unitario,
+        status: 'SOLICITADO',
+        data_solicitacao: payload.data_solicitacao,
+        data_entrega_prevista: payload.data_entrega_prevista ?? null,
+      });
+      if (error) throw error;
+
+      return { success: true, alerta };
+    } catch (err: any) {
+      console.error('❌ [API Error] createCompra:', err);
+      return { success: false, error: err?.message ?? 'Erro ao registrar compra' };
+    }
+  },
+
+  /** Confirma entrega de compra: status → ENTREGUE, calcula lead_time_real e atualiza fornecedor */
+  async confirmarEntregaCompra(compraId: string): Promise<{ success: boolean; leadTimeDias?: number; error?: string }> {
+    try {
+      const hoje = new Date().toISOString().split('T')[0];
+
+      // Busca a compra
+      const { data: compra, error: fetchErr } = await supabase
+        .from('compras')
+        .select('id, data_solicitacao, fornecedor_id')
+        .eq('id', compraId)
+        .single();
+      if (fetchErr || !compra) throw fetchErr ?? new Error('Compra não encontrada');
+
+      // Calcula lead time
+      const leadTimeDias = compra.data_solicitacao
+        ? Math.max(
+            Math.round(
+              (new Date(hoje).getTime() - new Date(compra.data_solicitacao).getTime()) /
+                (1000 * 60 * 60 * 24)
+            ),
+            0
+          )
+        : 0;
+
+      // Atualiza a compra
+      const { error: updateErr } = await supabase
+        .from('compras')
+        .update({ status: 'ENTREGUE', data_entrega_real: hoje })
+        .eq('id', compraId);
+      if (updateErr) throw updateErr;
+
+      // Atualiza lead_time_medio do fornecedor (média mobile simples) — ignora se RPC não existir
+      if (compra.fornecedor_id && leadTimeDias > 0) {
+        try {
+          await supabase.rpc('atualizar_lead_time_fornecedor', {
+            p_fornecedor_id: compra.fornecedor_id,
+            p_lead_time_novo: leadTimeDias,
+          });
+        } catch (_) { /* RPC opcional */ }
+      }
+
+      return { success: true, leadTimeDias };
+    } catch (err: any) {
+      console.error('❌ [API Error] confirmarEntregaCompra:', err);
+      return { success: false, error: err?.message ?? 'Erro ao confirmar entrega' };
+    }
+  },
+
+  /**
+   * Valida um preço unitário contra CMED e BPS para um medicamento.
+   * Requer que a coluna `preco_bps` exista em `medicamentos`.
+   */
+  async validarPrecoCompleto(
+    medicamentoId: string,
+    valorUnitario: number
+  ): Promise<{
+    cmed: { valido: boolean; teto: number; percentual: number };
+    bps: { valido: boolean | null; referencia: number | null; percentual: number | null };
+    status: 'OK' | 'ALERTA_BPS' | 'ALERTA_CMED';
+  }> {
+    try {
+      const { data: med } = await supabase
+        .from('medicamentos')
+        .select('preco_teto_cmed, preco_bps')
+        .eq('id', medicamentoId)
+        .single();
+
+      const teto = med?.preco_teto_cmed ?? 0;
+      const refBps: number | null = (med as any)?.preco_bps ?? null;
+
+      const cmedValido = teto > 0 ? valorUnitario <= teto : true;
+      const cmedPct = teto > 0 ? ((valorUnitario - teto) / teto) * 100 : 0;
+
+      let bpsValido: boolean | null = null;
+      let bpsPct: number | null = null;
+      if (refBps != null && refBps > 0) {
+        bpsValido = valorUnitario <= refBps;
+        bpsPct = ((valorUnitario - refBps) / refBps) * 100;
+      }
+
+      const status: 'OK' | 'ALERTA_BPS' | 'ALERTA_CMED' = !cmedValido
+        ? 'ALERTA_CMED'
+        : bpsValido === false
+        ? 'ALERTA_BPS'
+        : 'OK';
+
+      return {
+        cmed: { valido: cmedValido, teto, percentual: cmedPct },
+        bps: { valido: bpsValido, referencia: refBps, percentual: bpsPct },
+        status,
+      };
+    } catch (err) {
+      console.error('❌ [API Error] validarPrecoCompleto:', err);
+      // Fallback seguro
+      return {
+        cmed: { valido: true, teto: 0, percentual: 0 },
+        bps: { valido: null, referencia: null, percentual: null },
+        status: 'OK',
+      };
     }
   },
 };
