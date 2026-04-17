@@ -17,6 +17,8 @@ export type Medicamento = {
   estoque_minimo: number;
   preco_teto_cmed: number;
   fornecedor_preferencial_id?: string | null;
+  codigo_catmat?: string | null;
+  unidade_fornecimento?: string | null;
   created_at: string;
   lotes?: Lote[];
 };
@@ -247,6 +249,8 @@ export const api = {
     estoque_minimo: number;
     preco_teto_cmed: number;
     fornecedor_preferencial_id?: string;
+    codigo_catmat?: string;
+    unidade_fornecimento?: string;
   }): Promise<{ success: boolean; data?: Medicamento; error?: string }> {
     try {
       // Usar API route server-side para bypass do RLS

@@ -484,12 +484,19 @@ function EstoqueContent() {
                             }
                           </td>
                           <td className="py-4 px-4">
-                            <div className="flex items-center gap-2">
-                              <span className="font-bold text-slate-900 leading-tight">{med.nome}</span>
-                              {totalLotes > 1 && (
-                                <Badge className="bg-blue-50 text-blue-600 border-none shadow-none text-[9px] font-black px-1.5">
-                                  {totalLotes} lotes
-                                </Badge>
+                            <div className="flex flex-col gap-0.5">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <span className="font-bold text-slate-900 leading-tight">{med.nome}</span>
+                                {totalLotes > 1 && (
+                                  <Badge className="bg-blue-50 text-blue-600 border-none shadow-none text-[9px] font-black px-1.5">
+                                    {totalLotes} lotes
+                                  </Badge>
+                                )}
+                              </div>
+                              {med.codigo_catmat && (
+                                <span className="text-[9px] font-black text-purple-600 font-mono bg-purple-50 px-1.5 py-0.5 rounded w-fit">
+                                  {med.codigo_catmat}
+                                </span>
                               )}
                             </div>
                           </td>
@@ -770,7 +777,7 @@ function EstoqueContent() {
                     </div>
                   ) : (
                     <Input
-                      placeholder="Digite para buscar na base CMED e cadastrados..."
+                      placeholder="Digite o nome ou código BR (ex: BR0267509)..."
                       value={buscaEntrada}
                       autoComplete="off"
                       onChange={e => {
@@ -778,11 +785,19 @@ function EstoqueContent() {
                         setBuscaEntrada(val);
                         if (val.length >= 2) {
                           const q = val.toLowerCase();
-                          const localMatches = medicamentos.filter(m => m.nome.toLowerCase().includes(q)).slice(0, 5);
+                          // Busca por nome OU por código BR (ex: BR0267509)
+                          const localMatches = medicamentos.filter(m =>
+                            m.nome.toLowerCase().includes(q) ||
+                            (m.codigo_catmat && m.codigo_catmat.toLowerCase().includes(q))
+                          ).slice(0, 6);
                           setSuggestoesEntrada(localMatches);
+                          // Busca na base CMED/CATMAT por nome e código BR
                           api.buscarCmedReferencia(val).then(cmedResults => {
-                            setSuggestoesCmedEntrada(cmedResults);
-                            setShowSuggestoesEntrada(localMatches.length > 0 || cmedResults.length > 0);
+                            // Filtra resultados CMED que já estão cadastrados (evita duplicatas)
+                            const cadastradosCatmat = new Set(medicamentos.map(m => m.codigo_catmat).filter(Boolean));
+                            const cmedNovos = cmedResults.filter(c => !c.catmat_codigo || !cadastradosCatmat.has(c.catmat_codigo));
+                            setSuggestoesCmedEntrada(cmedNovos);
+                            setShowSuggestoesEntrada(localMatches.length > 0 || cmedNovos.length > 0);
                           });
                           setShowSuggestoesEntrada(localMatches.length > 0);
                         } else {
@@ -808,7 +823,7 @@ function EstoqueContent() {
                               className="w-full text-left px-3 py-2.5 hover:bg-emerald-50 transition-colors border-b border-slate-50"
                               onMouseDown={() => {
                                 setFormEntrada({...formEntrada, med_id: m.id});
-                                setEntradaMedNome(m.nome + (m.dosagem ? ` — ${m.dosagem}` : ''));
+                                setEntradaMedNome(m.nome + (m.unidade_fornecimento ? ` — ${m.unidade_fornecimento}` : m.dosagem ? ` — ${m.dosagem}` : ''));
                                 setBuscaEntrada('');
                                 setSuggestoesEntrada([]);
                                 setSuggestoesCmedEntrada([]);
@@ -816,10 +831,17 @@ function EstoqueContent() {
                                 if (formEntrada.preco) validarPrecoEntrada(m.id, formEntrada.preco);
                               }}
                             >
-                              <p className="text-sm font-bold text-slate-800">{m.nome}</p>
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <p className="text-sm font-bold text-slate-800">{m.nome}</p>
+                                {m.codigo_catmat && (
+                                  <span className="text-[9px] font-black text-purple-600 font-mono bg-purple-50 px-1.5 py-0.5 rounded">
+                                    {m.codigo_catmat}
+                                  </span>
+                                )}
+                              </div>
                               <div className="flex items-center gap-3 mt-0.5">
-                                {m.dosagem && <span className="text-[10px] text-slate-400">{m.dosagem}</span>}
-                                {m.preco_teto_cmed && <span className="text-[10px] font-bold text-blue-600">CMED R$ {m.preco_teto_cmed.toFixed(2)}</span>}
+                                {m.unidade_fornecimento && <span className="text-[10px] text-slate-400">{m.unidade_fornecimento}</span>}
+                                {m.preco_teto_cmed > 0 && <span className="text-[10px] font-bold text-blue-600">CMED R$ {m.preco_teto_cmed.toFixed(2)}</span>}
                               </div>
                             </button>
                           ))}
@@ -834,13 +856,14 @@ function EstoqueContent() {
                               key={`cmed-e-${i}`}
                               className="w-full text-left px-3 py-2.5 hover:bg-blue-50 transition-colors border-b border-slate-50"
                               onMouseDown={async () => {
-                                // Auto-cadastra o medicamento a partir da CMED e já seleciona
+                                // Auto-cadastra o medicamento a partir da CMED/CATMAT e já seleciona
                                 const precoTeto = c.pf_17 || c.pmc_17 || 0;
                                 const res = await api.createMedicamento({
                                   nome: c.produto,
                                   dosagem: c.apresentacao || undefined,
                                   estoque_minimo: 0,
                                   preco_teto_cmed: precoTeto,
+                                  codigo_catmat: c.catmat_codigo || undefined,
                                 });
                                 if (res.success && res.data) {
                                   toast.success(`"${c.produto}" cadastrado automaticamente via CMED!`);

@@ -9,7 +9,7 @@ import { NextRequest, NextResponse } from 'next/server';
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { nome, dosagem, estoque_minimo, preco_teto_cmed } = body;
+    const { nome, dosagem, estoque_minimo, preco_teto_cmed, codigo_catmat, unidade_fornecimento } = body;
     
     if (!nome) {
       return NextResponse.json({ success: false, error: 'Nome é obrigatório' }, { status: 400 });
@@ -54,6 +54,8 @@ export async function POST(request: NextRequest) {
         dosagem: dosagem || null,
         estoque_minimo: estoque_minimo ?? 0,
         preco_teto_cmed: preco_teto_cmed ?? 0,
+        codigo_catmat: codigo_catmat || null,
+        unidade_fornecimento: unidade_fornecimento || null,
       }])
       .select()
       .single();
