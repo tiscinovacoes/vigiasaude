@@ -118,6 +118,10 @@ function statusLabel(status: string) {
 // ============================================================================
 // PAGE COMPONENT
 // ============================================================================
+// ============================================================================
+// MOTORISTA PROFILE DASHBOARD — Módulo 7 (v2)
+// Dados reais do Supabase, KPIs calculados, gráficos, comprovações, alertas
+// ============================================================================
 export default function MotoristaDashboardPage() {
   const router = useRouter();
   const params = useParams();

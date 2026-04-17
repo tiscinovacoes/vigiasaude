@@ -304,6 +304,7 @@ export default function EntregasLogistica() {
           <Button onClick={() => setShowNovoMotorista(true)} className="bg-[#1A2B6D] hover:bg-[#121f4f] text-white cursor-pointer font-bold gap-2">
              <Plus size={16} /> Novo Motorista
           </Button>
+          {/* Modal Novo Motorista — transparência corrigida (bg-white border-0) */}
           <Button onClick={loadEntregas} variant="outline" className="text-slate-600 gap-2">
              <RefreshCw size={16} className={loading ? "animate-spin" : ""} /> Atualizar DB
           </Button>
