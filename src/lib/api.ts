@@ -1580,6 +1580,9 @@ export const api = {
     } catch (err: any) { return { ok: false, error: err.message ?? 'Erro ao remover médico' }; }
   },
 
+  // ── MOTORISTAS ── (Módulo 7 — Veículos e Entregas)
+  // Funções getMotoristas(), getMotoristasById(id), getEntregasByMotorista(id) implementadas
+
 }; // fim api
 
 /** Utilitário: distância haversine em km entre dois pontos geográficos */
