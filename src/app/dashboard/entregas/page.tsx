@@ -241,7 +241,7 @@ export default function EntregasLogistica() {
       {/* Modal - Novo Motorista */}
       {showNovoMotorista && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[1001] p-4" onClick={() => setShowNovoMotorista(false)}>
-          <Card className="w-full max-w-md shadow-xl" onClick={e => e.stopPropagation()}>
+          <Card className="w-full max-w-md shadow-xl bg-white border-0" onClick={e => e.stopPropagation()}>
             <CardHeader className="border-b border-slate-100">
                <div className="flex items-center justify-between">
                   <CardTitle className="text-lg font-black text-slate-900 flex items-center gap-2">

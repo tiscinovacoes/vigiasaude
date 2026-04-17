@@ -49,10 +49,32 @@ export type Paciente = {
 
 export type Motorista = {
   id: string;
-  cnh: string;
   nome: string;
+  cnh: string;
   placa_veiculo: string;
   status_atividade: 'ATIVO' | 'INATIVO' | 'EM_ROTA';
+  telefone?: string | null;
+  email?: string | null;
+  foto_url?: string | null;
+  total_entregas: number;
+  entregas_sucesso: number;
+  total_devolucoes: number;
+  pontualidade_percentual: number;
+  tempo_medio_rota_min: number;
+  created_at: string;
+  updated_at?: string;
+};
+
+export type Medico = {
+  id: string;
+  crm: string;
+  nome: string;
+  especialidade: string | null;
+  email: string | null;
+  telefone: string | null;
+  documento_url: string | null;
+  documento_nome: string | null;
+  ativo: boolean;
   created_at: string;
 };
 
@@ -652,6 +674,120 @@ export const api = {
     } catch (err) {
       console.error('❌ [API Error] getTimelineDispensacoes:', err);
       return [];
+    }
+  },
+
+  // --------------------------------------------------------------------------
+  // RECEITAS MÉDICAS
+  // --------------------------------------------------------------------------
+
+  /**
+   * Busca na tabela catmat_medicamentos por código BR (ex: BR0268315)
+   * ou por trecho do nome / descrição. Retorna até 20 resultados.
+   */
+  async buscarCatmat(query: string): Promise<{
+    codigo_br: string;
+    descricao: string;
+    unidade_fornecimento: string | null;
+  }[]> {
+    if (!query || query.trim().length < 2) return [];
+    const q = query.trim().toUpperCase();
+    try {
+      // Tenta código BR primeiro (começa com "BR")
+      if (q.startsWith('BR')) {
+        const { data, error } = await supabase
+          .from('catmat_medicamentos')
+          .select('codigo_br, descricao, unidade_fornecimento')
+          .ilike('codigo_br', `${q}%`)
+          .order('codigo_br')
+          .limit(20);
+        if (!error && data && data.length > 0) return data;
+      }
+      // Busca por descrição
+      const { data, error } = await supabase
+        .from('catmat_medicamentos')
+        .select('codigo_br, descricao, unidade_fornecimento')
+        .ilike('descricao', `%${query.trim()}%`)
+        .order('descricao')
+        .limit(20);
+      if (error) throw error;
+      return data ?? [];
+    } catch (err) {
+      console.error('❌ [API Error] buscarCatmat:', err);
+      return [];
+    }
+  },
+
+  async getReceitasByPaciente(pacienteId: string): Promise<{
+    id: string;
+    paciente_id: string;
+    medicamento_nome: string;
+    data_uso: string;
+    medico_nome: string | null;
+    numero_receita: string | null;
+    arquivo_url: string | null;
+    observacoes: string | null;
+    criado_em: string;
+  }[]> {
+    try {
+      const { data, error } = await supabase
+        .from('receitas')
+        .select('id, paciente_id, medicamento_nome, data_uso, medico_nome, numero_receita, arquivo_url, observacoes, criado_em')
+        .eq('paciente_id', pacienteId)
+        .order('criado_em', { ascending: false });
+      if (error) throw error;
+      return data ?? [];
+    } catch (err) {
+      console.error('❌ [API Error] getReceitasByPaciente:', err);
+      return [];
+    }
+  },
+
+  async salvarReceita(form: {
+    paciente_id:      string;
+    medicamento_nome: string;
+    catmat_codigo_br?: string;
+    data_inicio:      string;
+    data_fim?:        string;
+    frequencia_uso:   string;
+    medico_nome?:     string;
+    numero_receita?:  string;
+    observacoes?:     string;
+    arquivo?:         File | null;
+  }): Promise<{ ok: boolean; id?: string; error?: string }> {
+    try {
+      let arquivo_url: string | undefined;
+      if (form.arquivo) {
+        const ext  = form.arquivo.name.split('.').pop();
+        const path = `${form.paciente_id}/${Date.now()}.${ext}`;
+        const { error: upErr } = await supabase.storage
+          .from('receitas')
+          .upload(path, form.arquivo, { upsert: true });
+        if (upErr) throw upErr;
+        const { data: urlData } = supabase.storage.from('receitas').getPublicUrl(path);
+        arquivo_url = urlData.publicUrl;
+      }
+      const { data, error } = await supabase
+        .from('receitas_medicas')
+        .insert({
+          paciente_id:      form.paciente_id,
+          medicamento_nome: form.medicamento_nome,
+          catmat_codigo_br: form.catmat_codigo_br   || null,
+          data_inicio:      form.data_inicio,
+          data_fim:         form.data_fim            || null,
+          frequencia_uso:   form.frequencia_uso,
+          medico_nome:      form.medico_nome         || null,
+          numero_receita:   form.numero_receita      || null,
+          observacoes:      form.observacoes         || null,
+          arquivo_url:      arquivo_url              || null,
+        })
+        .select('id')
+        .single();
+      if (error) throw error;
+      return { ok: true, id: data.id };
+    } catch (err: any) {
+      console.error('❌ [API Error] salvarReceita:', err);
+      return { ok: false, error: err?.message ?? 'Erro desconhecido' };
     }
   },
 
@@ -1313,6 +1449,137 @@ export const api = {
     }
   },
 
+  // --------------------------------------------------------------------------
+  // MOTORISTAS
+  // --------------------------------------------------------------------------
+
+  /** Lista todos os motoristas ordenados por nome */
+  async getMotoristas(): Promise<Motorista[]> {
+    try {
+      const { data, error } = await supabase
+        .from('motoristas')
+        .select('*')
+        .order('nome');
+      if (error) throw error;
+      return (data ?? []) as Motorista[];
+    } catch (err) {
+      console.error('❌ [API Error] getMotoristas:', err);
+      return [];
+    }
+  },
+
+  /** Perfil completo de um motorista por UUID */
+  async getMotoristasById(id: string): Promise<Motorista | null> {
+    try {
+      const { data, error } = await supabase
+        .from('motoristas')
+        .select('*')
+        .eq('id', id)
+        .single();
+      if (error) return null;
+      return data as Motorista;
+    } catch (err) {
+      console.error('❌ [API Error] getMotoristasById:', err);
+      return null;
+    }
+  },
+
+  /** Histórico de entregas de um motorista */
+  async getEntregasByMotorista(motoristaId: string): Promise<{
+    id: string;
+    status_entrega: string;
+    created_at: string;
+    foto_comprovante_url: string | null;
+    assinatura_digital_url: string | null;
+    paciente_nome: string;
+    itens: { id: string; medicamento_nome: string; serial_number: string; lote_codigo: string }[];
+  }[]> {
+    try {
+      const { data, error } = await supabase
+        .from('entregas_logistica')
+        .select(`
+          id, status_entrega, created_at, foto_comprovante_url, assinatura_digital_url,
+          pacientes(nome_completo),
+          unidades_serializadas!left(id, serial_number, medicamento_nome, lote_codigo)
+        `)
+        .eq('motorista_id', motoristaId)
+        .order('created_at', { ascending: false })
+        .limit(100);
+      if (error) throw error;
+      return (data ?? []).map((e: any) => ({
+        id: e.id,
+        status_entrega: e.status_entrega,
+        created_at: e.created_at,
+        foto_comprovante_url: e.foto_comprovante_url,
+        assinatura_digital_url: e.assinatura_digital_url,
+        paciente_nome: e.pacientes?.nome_completo ?? 'N/A',
+        itens: e.unidades_serializadas ?? [],
+      }));
+    } catch (err) {
+      console.error('❌ [API Error] getEntregasByMotorista:', err);
+      return [];
+    }
+  },
+
+  /** Lista todos os médicos cadastrados */
+  async getMedicos(): Promise<Medico[]> {
+    try {
+      const { data, error } = await supabase.from('medicos').select('*').order('nome');
+      if (error) throw error;
+      return (data ?? []) as unknown as Medico[];
+    } catch (err) { console.error('❌ getMedicos:', err); return []; }
+  },
+
+  /** Cria um novo médico (com upload opcional de documento CRM) */
+  async createMedico(params: { crm: string; nome: string; especialidade?: string; email?: string; telefone?: string; arquivo?: File | null; }): Promise<{ ok: boolean; error?: string }> {
+    try {
+      let documento_url: string | null = null;
+      if (params.arquivo) {
+        const ext = params.arquivo.name.split('.').pop();
+        const path = `medicos/${Date.now()}.${ext}`;
+        const { error: upErr } = await supabase.storage.from('documentos').upload(path, params.arquivo, { upsert: true });
+        if (upErr) throw upErr;
+        documento_url = supabase.storage.from('documentos').getPublicUrl(path).data.publicUrl;
+      }
+      const { error } = await supabase.from('medicos').insert({ crm: params.crm, nome: params.nome, especialidade: params.especialidade || null, email: params.email || null, telefone: params.telefone || null, documento_url });
+      if (error) throw error;
+      return { ok: true };
+    } catch (err: any) { return { ok: false, error: err.message ?? 'Erro ao criar médico' }; }
+  },
+
+  /** Atualiza dados de um médico existente */
+  async updateMedico(id: string, params: { crm?: string; nome?: string; especialidade?: string; email?: string; telefone?: string; arquivo?: File | null; ativo?: boolean; }): Promise<{ ok: boolean; error?: string }> {
+    try {
+      let documento_url: string | undefined;
+      if (params.arquivo) {
+        const ext = params.arquivo.name.split('.').pop();
+        const path = `medicos/${id}.${ext}`;
+        await supabase.storage.from('documentos').upload(path, params.arquivo, { upsert: true });
+        documento_url = supabase.storage.from('documentos').getPublicUrl(path).data.publicUrl;
+      }
+      const payload: Record<string, any> = {};
+      if (params.crm) payload.crm = params.crm;
+      if (params.nome) payload.nome = params.nome;
+      if (params.especialidade !== undefined) payload.especialidade = params.especialidade;
+      if (params.email !== undefined) payload.email = params.email;
+      if (params.telefone !== undefined) payload.telefone = params.telefone;
+      if (documento_url) payload.documento_url = documento_url;
+      if (params.ativo !== undefined) payload.ativo = params.ativo;
+      const { error } = await supabase.from('medicos').update(payload).eq('id', id);
+      if (error) throw error;
+      return { ok: true };
+    } catch (err: any) { return { ok: false, error: err.message ?? 'Erro ao atualizar médico' }; }
+  },
+
+  /** Remove (soft-delete via ativo=false) um médico */
+  async deleteMedico(id: string): Promise<{ ok: boolean; error?: string }> {
+    try {
+      const { error } = await supabase.from('medicos').update({ ativo: false }).eq('id', id);
+      if (error) throw error;
+      return { ok: true };
+    } catch (err: any) { return { ok: false, error: err.message ?? 'Erro ao remover médico' }; }
+  },
+
 }; // fim api
 
 /** Utilitário: distância haversine em km entre dois pontos geográficos */
@@ -1379,7 +1646,8 @@ export const auditoriaAPI = {
       console.error('❌ [API Error] getLogsRecentes:', err);
       return [];
     }
-  }
+  },
+
 };
 
 export const recallAPI = {
@@ -1858,6 +2126,112 @@ export const recallAPI = {
       return data ?? [];
     } catch (err) {
       console.error('❌ [API Error] getTemperaturaRota:', err);
+      return [];
+    }
+  },
+
+
+
+  // ── CATMAT ──────────────────────────────────────────────────────────────────
+
+  /** Busca medicamentos na tabela CATMAT por nome ou código BR (max 30 resultados) */
+  async buscarCatmat(query: string): Promise<{
+    codigo_br: string;
+    descricao: string;
+    unidade_fornecimento: string | null;
+  }[]> {
+    try {
+      const q = query.trim();
+      const { data, error } = await supabase
+        .from('catmat_medicamentos')
+        .select('codigo_br, descricao, unidade_fornecimento')
+        .or(`descricao.ilike.%${q}%,codigo_br.ilike.%${q}%`)
+        .order('descricao', { ascending: true })
+        .limit(30);
+      if (error) throw error;
+      return data ?? [];
+    } catch (err) {
+      console.error('❌ [API Error] buscarCatmat:', err);
+      return [];
+    }
+  },
+
+  // ── RECEITAS MÉDICAS ─────────────────────────────────────────────────────────
+
+  /**
+   * Salva uma nova receita médica para um paciente.
+   * Se `arquivo` for fornecido, faz upload para o bucket `receitas` antes de salvar.
+   */
+  async salvarReceita(payload: {
+    paciente_id: string;
+    medicamento_nome: string;
+    catmat_codigo_br?: string;
+    data_inicio: string;
+    data_fim?: string;
+    frequencia_uso: string;
+    medico_nome?: string;
+    numero_receita?: string;
+    observacoes?: string;
+    arquivo?: File | null;
+  }): Promise<{ ok: boolean; error?: string }> {
+    try {
+      let arquivo_url: string | null = null;
+
+      if (payload.arquivo) {
+        const ext = payload.arquivo.name.split('.').pop() ?? 'bin';
+        const path = `${payload.paciente_id}/${Date.now()}.${ext}`;
+        const { error: upErr } = await supabase.storage
+          .from('receitas')
+          .upload(path, payload.arquivo, { upsert: false });
+        if (upErr) throw upErr;
+        const { data: urlData } = supabase.storage.from('receitas').getPublicUrl(path);
+        arquivo_url = urlData.publicUrl;
+      }
+
+      const { error } = await supabase.from('receitas_medicas').insert({
+        paciente_id:      payload.paciente_id,
+        medicamento_nome: payload.medicamento_nome,
+        catmat_codigo_br: payload.catmat_codigo_br ?? null,
+        data_inicio:      payload.data_inicio,
+        data_fim:         payload.data_fim ?? null,
+        frequencia_uso:   payload.frequencia_uso,
+        medico_nome:      payload.medico_nome ?? null,
+        numero_receita:   payload.numero_receita ?? null,
+        observacoes:      payload.observacoes ?? null,
+        arquivo_url,
+      });
+      if (error) throw error;
+      return { ok: true };
+    } catch (err: any) {
+      console.error('❌ [API Error] salvarReceita:', err);
+      return { ok: false, error: err?.message ?? 'Erro desconhecido' };
+    }
+  },
+
+  /** Lista receitas de um paciente ordenadas por data de início (mais recente primeiro) */
+  async getReceitasByPaciente(pacienteId: string): Promise<{
+    id: string;
+    medicamento_nome: string;
+    catmat_codigo_br: string | null;
+    data_inicio: string;
+    data_fim: string | null;
+    frequencia_uso: string;
+    medico_nome: string | null;
+    numero_receita: string | null;
+    observacoes: string | null;
+    arquivo_url: string | null;
+    created_at: string;
+  }[]> {
+    try {
+      const { data, error } = await supabase
+        .from('receitas_medicas')
+        .select('id, medicamento_nome, catmat_codigo_br, data_inicio, data_fim, frequencia_uso, medico_nome, numero_receita, observacoes, arquivo_url, created_at')
+        .eq('paciente_id', pacienteId)
+        .order('data_inicio', { ascending: false });
+      if (error) throw error;
+      return data ?? [];
+    } catch (err) {
+      console.error('❌ [API Error] getReceitasByPaciente:', err);
       return [];
     }
   },

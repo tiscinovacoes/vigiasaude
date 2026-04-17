@@ -24,11 +24,11 @@ import {
   PenTool,
   AlertTriangle,
   MapPin,
-  DollarSign,
   ShieldAlert,
-  Navigation,
   User,
-  Calendar,
+  Phone,
+  Mail,
+  Minus,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
@@ -43,156 +43,77 @@ import {
   ResponsiveContainer,
   Legend,
 } from 'recharts';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { api, Motorista } from '@/lib/api';
+import { format, subMonths, startOfMonth, endOfMonth, parseISO } from 'date-fns';
+import { ptBR } from 'date-fns/locale';
 
 // ============================================================================
-// MOCK DATA — substitua com chamadas ao Supabase quando disponível
+// TIPOS LOCAIS
 // ============================================================================
-const motoristasData = [
-  {
-    id: 1,
-    nome: 'Carlos Andrade Santos',
-    motoristaCodigo: 'MOT-001',
-    veiculo: 'Fiat Ducato',
-    placa: 'ABC-1234',
-    performance: {
-      indiceEfetividade: 97.2,
-      tempoMedioPorParada: 6,
-      taxaDevolucao: 1.8,
-      pontualidadeRota: 94.5,
-      totalEntregasHistorico: 248,
-      entregasSucessoPrimeiraTentativa: 241,
-      totalDevolucoes: 7,
-      rotasNoPrazo: 38,
-      totalRotas: 40,
-      tempoMedioRotaMin: 185,
-      historicoMensal: [
-        { mes: 'Out', efetividade: 95, pontualidade: 90, entregas: 38 },
-        { mes: 'Nov', efetividade: 96, pontualidade: 92, entregas: 42 },
-        { mes: 'Dez', efetividade: 94, pontualidade: 88, entregas: 35 },
-        { mes: 'Jan', efetividade: 97, pontualidade: 95, entregas: 44 },
-        { mes: 'Fev', efetividade: 98, pontualidade: 96, entregas: 47 },
-        { mes: 'Mar', efetividade: 97, pontualidade: 94, entregas: 42 },
-      ],
-      motivosDevolucao: [
-        { motivo: 'Paciente Ausente', qtd: 3, percentual: 42.9 },
-        { motivo: 'Endereço Incorreto', qtd: 2, percentual: 28.6 },
-        { motivo: 'Recusa do Paciente', qtd: 2, percentual: 28.6 },
-      ],
-      inventarioBordo: [
-        {
-          serialNumber: 'SN-A101-2026',
-          batchId: 'LT-2024-INS001',
-          medicamento: 'Insulina NPH 100UI/ml',
-          quantidade: 5,
-          destinatario: 'Ana Beatriz Lima',
-          tempAtual: 4.2,
-          status: 'Em trânsito',
-        },
-        {
-          serialNumber: 'SN-B201-2026',
-          batchId: 'LT-2024-MET015',
-          medicamento: 'Metformina 850mg',
-          quantidade: 60,
-          destinatario: 'João Alves Sousa',
-          tempAtual: 22.1,
-          status: 'Em trânsito',
-        },
-        {
-          serialNumber: 'SN-C301-2026',
-          batchId: 'LT-2024-LOS008',
-          medicamento: 'Losartana 50mg',
-          quantidade: 30,
-          destinatario: 'Maria Conceição Silva',
-          tempAtual: 22.3,
-          status: 'Em trânsito',
-        },
-      ],
-      historicoComprovacoes: [
-        {
-          id: 1,
-          paciente: 'Rosa Maria Ferreira',
-          dataHora: '10/04/2026 09:15',
-          medicamentos: 'Insulina NPH, Metformina 850mg',
-          dispenseId: 'DISP-2026-0312',
-          fotoUrl: 'https://via.placeholder.com/400x300?text=Foto+Entrega+1',
-          assinaturaUrl: 'https://via.placeholder.com/200x80?text=Assinatura+Digital',
-        },
-        {
-          id: 2,
-          paciente: 'José Carlos Andrade',
-          dataHora: '10/04/2026 10:42',
-          medicamentos: 'Losartana 50mg, Enalapril 10mg',
-          dispenseId: 'DISP-2026-0313',
-          fotoUrl: 'https://via.placeholder.com/400x300?text=Foto+Entrega+2',
-          assinaturaUrl: 'https://via.placeholder.com/200x80?text=Assinatura+Digital',
-        },
-      ],
-      alertasAnomalia: [
-        {
-          id: 1,
-          tipo: 'Desvio de Rota',
-          gravidade: 'Alta',
-          dataHora: '08/04/2026 14:32',
-          descricao: 'Veículo desviou 1,8km da rota programada sem justificativa prévia.',
-          localizacao: 'Av. Brasil, 1500 - Campo Grande/MS',
-          medicamentosEmRisco: 'Insulina NPH 100UI/ml (Cx 5un)',
-          valorEmRisco: 229.0,
-          status: 'Em Análise',
-          justificativa: null,
-        },
-        {
-          id: 2,
-          tipo: 'Parada Excessiva',
-          gravidade: 'Baixa',
-          dataHora: '05/04/2026 12:15',
-          descricao: 'Veículo parado por 38 minutos em ponto não previsto na rota.',
-          localizacao: 'Rua Antônio Trajano, 200 - Campo Grande/MS',
-          medicamentosEmRisco: 'Nenhum medicamento termossensível',
-          valorEmRisco: 0,
-          status: 'Justificado',
-          justificativa: 'Parada para almoço conforme permitido no contrato.',
-        },
-      ],
-    },
-  },
-  {
-    id: 2,
-    nome: 'Marcos Vinicius Pereira',
-    motoristaCodigo: 'MOT-002',
-    veiculo: 'Renault Master',
-    placa: 'XYZ-5678',
-    performance: {
-      indiceEfetividade: 88.5,
-      tempoMedioPorParada: 9,
-      taxaDevolucao: 4.2,
-      pontualidadeRota: 82.0,
-      totalEntregasHistorico: 156,
-      entregasSucessoPrimeiraTentativa: 138,
-      totalDevolucoes: 18,
-      rotasNoPrazo: 33,
-      totalRotas: 40,
-      tempoMedioRotaMin: 220,
-      historicoMensal: [
-        { mes: 'Out', efetividade: 85, pontualidade: 78, entregas: 22 },
-        { mes: 'Nov', efetividade: 87, pontualidade: 80, entregas: 28 },
-        { mes: 'Dez', efetividade: 86, pontualidade: 82, entregas: 25 },
-        { mes: 'Jan', efetividade: 89, pontualidade: 84, entregas: 30 },
-        { mes: 'Fev', efetividade: 90, pontualidade: 83, entregas: 28 },
-        { mes: 'Mar', efetividade: 88, pontualidade: 82, entregas: 23 },
-      ],
-      motivosDevolucao: [
-        { motivo: 'Paciente Ausente', qtd: 8, percentual: 44.4 },
-        { motivo: 'Endereço Incorreto', qtd: 5, percentual: 27.8 },
-        { motivo: 'Recusa do Paciente', qtd: 3, percentual: 16.7 },
-        { motivo: 'Outros', qtd: 2, percentual: 11.1 },
-      ],
-      inventarioBordo: [],
-      historicoComprovacoes: [],
-      alertasAnomalia: [],
-    },
-  },
-];
+type EntregaMot = {
+  id: string;
+  status_entrega: string;
+  created_at: string;
+  foto_comprovante_url: string | null;
+  assinatura_digital_url: string | null;
+  paciente_nome: string;
+  itens: { id: string; medicamento_nome: string; serial_number: string; lote_codigo: string }[];
+};
+
+type MesStats = {
+  mes: string;
+  efetividade: number;
+  pontualidade: number;
+  entregas: number;
+};
+
+// ============================================================================
+// HELPERS
+// ============================================================================
+
+/** Calcula histórico mensal (últimos 6 meses) a partir do array de entregas */
+function calcHistoricoMensal(entregas: EntregaMot[]): MesStats[] {
+  const hoje = new Date();
+  const meses: MesStats[] = [];
+
+  for (let i = 5; i >= 0; i--) {
+    const refDate = subMonths(hoje, i);
+    const inicio = startOfMonth(refDate);
+    const fim = endOfMonth(refDate);
+    const label = format(refDate, 'MMM', { locale: ptBR });
+    const capitalizado = label.charAt(0).toUpperCase() + label.slice(1);
+
+    const noMes = entregas.filter((e) => {
+      const d = parseISO(e.created_at);
+      return d >= inicio && d <= fim;
+    });
+
+    const entregues = noMes.filter((e) => e.status_entrega === 'ENTREGUE').length;
+    const total = noMes.length;
+    const efetividade = total > 0 ? Math.round((entregues / total) * 100) : 0;
+
+    meses.push({
+      mes: capitalizado,
+      efetividade,
+      pontualidade: efetividade, // sem dado separado de pontualidade por mês
+      entregas: total,
+    });
+  }
+  return meses;
+}
+
+function statusBadgeClass(status: string) {
+  if (status === 'EM_ROTA') return 'bg-blue-100 text-blue-700 border-blue-200';
+  if (status === 'INATIVO') return 'bg-red-100 text-red-700 border-red-200';
+  return 'bg-green-100 text-green-700 border-green-200';
+}
+
+function statusLabel(status: string) {
+  if (status === 'EM_ROTA') return '🚛 Em Rota';
+  if (status === 'INATIVO') return '⛔ Inativo';
+  return '✅ Ativo';
+}
 
 // ============================================================================
 // PAGE COMPONENT
@@ -200,35 +121,95 @@ const motoristasData = [
 export default function MotoristaDashboardPage() {
   const router = useRouter();
   const params = useParams();
-  const [periodoFiltro, setPeriodoFiltro] = useState<'dia' | 'semana' | 'mes'>('mes');
 
-  const motorista = motoristasData.find((m) => m.id === Number(params.id));
+  const [motorista, setMotorista] = useState<Motorista | null>(null);
+  const [entregas, setEntregas] = useState<EntregaMot[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [abaAtiva, setAbaAtiva] = useState<'comprovacoes' | 'alertas'>('comprovacoes');
 
-  if (!motorista || !motorista.performance) {
+  useEffect(() => {
+    const id = params?.id as string;
+    if (!id) return;
+
+    async function loadData() {
+      setLoading(true);
+      try {
+        const [mot, entList] = await Promise.all([
+          api.getMotoristasById(id),
+          api.getEntregasByMotorista(id),
+        ]);
+        setMotorista(mot);
+        setEntregas(entList);
+      } catch (err) {
+        console.error('Erro ao carregar motorista:', err);
+      } finally {
+        setLoading(false);
+      }
+    }
+    loadData();
+  }, [params?.id]);
+
+  // ── Loading ──────────────────────────────────────────────────────────────
+  if (loading) {
     return (
       <div className="flex items-center justify-center h-screen">
-        <div className="text-center">
-          <AlertCircle className="w-12 h-12 text-[#94A3B8] mx-auto mb-3" />
+        <div className="text-center space-y-3">
+          <div className="w-10 h-10 border-4 border-[#1E3A8A] border-t-transparent rounded-full animate-spin mx-auto" />
+          <p className="text-[#64748B] text-sm">Carregando perfil do motorista...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // ── Not found ─────────────────────────────────────────────────────────────
+  if (!motorista) {
+    return (
+      <div className="flex items-center justify-center h-screen">
+        <div className="text-center space-y-3">
+          <AlertCircle className="w-12 h-12 text-[#94A3B8] mx-auto" />
           <p className="text-[#64748B]">Motorista não encontrado</p>
-          <Button
-            onClick={() => router.push('/dashboard/monitoramento')}
-            className="mt-4 cursor-pointer"
-          >
-            Voltar ao Monitoramento
+          <Button onClick={() => router.push('/dashboard/entregas')} className="cursor-pointer">
+            Voltar às Entregas
           </Button>
         </div>
       </div>
     );
   }
 
-  const { performance } = motorista;
+  // ── Métricas calculadas ───────────────────────────────────────────────────
+  const totalEntregas = motorista.total_entregas || 0;
+  const entregasSucesso = motorista.entregas_sucesso || 0;
+  const totalDevolucoes = motorista.total_devolucoes || 0;
 
-  const COLORS = {
-    green: '#16A34A',
-    blue: '#1E3A8A',
-    amber: '#F59E0B',
-    red: '#DC2626',
-  };
+  const indiceEfetividade =
+    totalEntregas > 0
+      ? parseFloat(((entregasSucesso / totalEntregas) * 100).toFixed(1))
+      : motorista.pontualidade_percentual ?? 0;
+
+  const taxaDevolucao =
+    totalEntregas > 0
+      ? parseFloat(((totalDevolucoes / totalEntregas) * 100).toFixed(1))
+      : 0;
+
+  const pontualidade = motorista.pontualidade_percentual ?? 0;
+  const tempoMedioRota = motorista.tempo_medio_rota_min ?? 0;
+
+  // Inventário de bordo = entregas EM_ROTA
+  const inventarioBordo = entregas.filter((e) => e.status_entrega === 'EM_ROTA');
+
+  // Comprovações = entregas com foto ou assinatura
+  const comprovacoes = entregas.filter(
+    (e) => e.foto_comprovante_url || e.assinatura_digital_url
+  );
+
+  // Histórico mensal
+  const historicoMensal = calcHistoricoMensal(entregas);
+
+  // Motivos de devolução (FALHA = não entregue)
+  const entregasFalha = entregas.filter((e) => e.status_entrega === 'FALHA');
+
+  // Cores KPI
+  const COLORS = { green: '#16A34A', blue: '#1E3A8A', amber: '#F59E0B', red: '#DC2626' };
 
   const getKpiColor = (value: number, thresholds: { excellent: number; good: number }) => {
     if (value >= thresholds.excellent) return 'green';
@@ -236,10 +217,9 @@ export default function MotoristaDashboardPage() {
     return 'red';
   };
 
-  const efetividadeColor = getKpiColor(performance.indiceEfetividade, { excellent: 95, good: 90 });
-  const pontualidadeColor = getKpiColor(performance.pontualidadeRota, { excellent: 90, good: 80 });
-  const devolucaoColor =
-    performance.taxaDevolucao < 2 ? 'green' : performance.taxaDevolucao < 5 ? 'amber' : 'red';
+  const efetividadeColor = getKpiColor(indiceEfetividade, { excellent: 95, good: 90 });
+  const pontualidadeColor = getKpiColor(pontualidade, { excellent: 90, good: 80 });
+  const devolucaoColor = taxaDevolucao < 2 ? 'green' : taxaDevolucao < 5 ? 'amber' : 'red';
 
   const colorBorder = (c: string) =>
     c === 'green' ? 'border-l-[#16A34A]' : c === 'amber' ? 'border-l-[#F59E0B]' : 'border-l-[#DC2626]';
@@ -248,48 +228,68 @@ export default function MotoristaDashboardPage() {
   const colorText = (c: string) =>
     c === 'green' ? 'text-[#16A34A]' : c === 'amber' ? 'text-[#F59E0B]' : 'text-[#DC2626]';
 
+  // ── Render ────────────────────────────────────────────────────────────────
   return (
     <div className="space-y-4 pt-16 sm:pt-4">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+
+      {/* ── Cabeçalho ── */}
+      <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
         <div>
           <div className="flex items-center gap-3">
             <Button
               variant="outline"
               size="sm"
-              onClick={() => router.push('/dashboard/monitoramento')}
+              onClick={() => router.push('/dashboard/entregas')}
               className="cursor-pointer border-slate-300"
             >
               <ArrowLeft className="w-4 h-4 mr-2" />
               Voltar
             </Button>
             <div>
-              <h1 className="text-[#1E293B] font-bold text-2xl">Dashboard de Performance</h1>
-              <div className="flex items-center gap-2 mt-1">
-                <Truck className="w-4 h-4 text-[#1E3A8A]" />
-                <p className="text-[#64748B]">
-                  <strong className="text-[#1E293B]">{motorista.nome}</strong> —{' '}
-                  {motorista.motoristaCodigo}
-                </p>
-                <span className="text-[#CBD5E1]">|</span>
-                <p className="text-[#64748B]">
-                  {motorista.veiculo} - {motorista.placa}
-                </p>
+              <div className="flex items-center gap-2 flex-wrap">
+                <div className="w-10 h-10 bg-[#1E3A8A] rounded-full flex items-center justify-center flex-shrink-0">
+                  <User className="w-5 h-5 text-white" />
+                </div>
+                <div>
+                  <h1 className="text-[#1E293B] font-bold text-2xl leading-tight">{motorista.nome}</h1>
+                  <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+                    <div className="flex items-center gap-1 text-[#64748B] text-sm">
+                      <Truck className="w-3.5 h-3.5 text-[#1E3A8A]" />
+                      <span>{motorista.placa_veiculo}</span>
+                    </div>
+                    <span className="text-[#CBD5E1]">·</span>
+                    <div className="flex items-center gap-1 text-[#64748B] text-sm">
+                      <FileText className="w-3.5 h-3.5" />
+                      <span>CNH {motorista.cnh}</span>
+                    </div>
+                  </div>
+                </div>
               </div>
             </div>
           </div>
         </div>
-        <div className="flex items-center gap-2">
+
+        <div className="flex flex-wrap items-center gap-2 sm:mt-1">
+          <Badge className={statusBadgeClass(motorista.status_atividade)}>
+            {statusLabel(motorista.status_atividade)}
+          </Badge>
           <Badge className="bg-blue-50 text-blue-700 border-blue-200">
-            {performance.totalEntregasHistorico} entregas realizadas
+            {totalEntregas} entregas realizadas
           </Badge>
-          <Badge className="bg-green-50 text-green-700 border-green-200">
-            Período: Últimos 6 meses
-          </Badge>
+          {motorista.telefone && (
+            <Badge className="bg-slate-50 text-slate-600 border-slate-200 gap-1">
+              <Phone className="w-3 h-3" />{motorista.telefone}
+            </Badge>
+          )}
+          {motorista.email && (
+            <Badge className="bg-slate-50 text-slate-600 border-slate-200 gap-1">
+              <Mail className="w-3 h-3" />{motorista.email}
+            </Badge>
+          )}
         </div>
       </div>
 
-      {/* KPIs Principais */}
+      {/* ── KPIs ── */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {/* Índice de Efetividade */}
         <Card className={`shadow-sm border-l-4 ${colorBorder(efetividadeColor)}`}>
@@ -298,23 +298,19 @@ export default function MotoristaDashboardPage() {
               <div className={`w-10 h-10 rounded-full flex items-center justify-center ${colorBg(efetividadeColor)}`}>
                 <Target className={`w-5 h-5 ${colorText(efetividadeColor)}`} />
               </div>
-              {efetividadeColor === 'green' ? (
-                <TrendingUp className="w-5 h-5 text-[#16A34A]" />
-              ) : (
-                <TrendingDown className="w-5 h-5 text-[#DC2626]" />
-              )}
+              {efetividadeColor === 'green'
+                ? <TrendingUp className="w-5 h-5 text-[#16A34A]" />
+                : <TrendingDown className="w-5 h-5 text-[#DC2626]" />}
             </div>
             <p className="text-xs text-[#64748B] mb-1">Índice de Efetividade</p>
-            <p className={`text-2xl font-bold ${colorText(efetividadeColor)}`}>
-              {performance.indiceEfetividade}%
-            </p>
+            <p className={`text-2xl font-bold ${colorText(efetividadeColor)}`}>{indiceEfetividade}%</p>
             <p className="text-xs text-[#94A3B8] mt-2">
-              {performance.entregasSucessoPrimeiraTentativa} de {performance.totalEntregasHistorico} na 1ª tentativa
+              {entregasSucesso} de {totalEntregas} na 1ª tentativa
             </p>
           </CardContent>
         </Card>
 
-        {/* Tempo Médio por Parada */}
+        {/* Tempo Médio de Rota */}
         <Card className="shadow-sm border-l-4 border-l-[#1E3A8A]">
           <CardContent className="p-4">
             <div className="flex items-center justify-between mb-2">
@@ -323,11 +319,9 @@ export default function MotoristaDashboardPage() {
               </div>
               <Clock className="w-5 h-5 text-[#1E3A8A]" />
             </div>
-            <p className="text-xs text-[#64748B] mb-1">Tempo Médio por Parada</p>
-            <p className="text-2xl text-[#1E3A8A] font-bold">{performance.tempoMedioPorParada} min</p>
-            <p className="text-xs text-[#94A3B8] mt-2">
-              Tempo de rota: {performance.tempoMedioRotaMin} min
-            </p>
+            <p className="text-xs text-[#64748B] mb-1">Tempo Médio de Rota</p>
+            <p className="text-2xl text-[#1E3A8A] font-bold">{tempoMedioRota} min</p>
+            <p className="text-xs text-[#94A3B8] mt-2">Média histórica acumulada</p>
           </CardContent>
         </Card>
 
@@ -338,23 +332,17 @@ export default function MotoristaDashboardPage() {
               <div className={`w-10 h-10 rounded-full flex items-center justify-center ${colorBg(devolucaoColor)}`}>
                 <RotateCcw className={`w-5 h-5 ${colorText(devolucaoColor)}`} />
               </div>
-              {devolucaoColor === 'green' ? (
-                <TrendingDown className="w-5 h-5 text-[#16A34A]" />
-              ) : (
-                <TrendingUp className="w-5 h-5 text-[#DC2626]" />
-              )}
+              {devolucaoColor === 'green'
+                ? <TrendingDown className="w-5 h-5 text-[#16A34A]" />
+                : <TrendingUp className="w-5 h-5 text-[#DC2626]" />}
             </div>
             <p className="text-xs text-[#64748B] mb-1">Taxa de Devolução</p>
-            <p className={`text-2xl font-bold ${colorText(devolucaoColor)}`}>
-              {performance.taxaDevolucao}%
-            </p>
-            <p className="text-xs text-[#94A3B8] mt-2">
-              {performance.totalDevolucoes} devoluções no período
-            </p>
+            <p className={`text-2xl font-bold ${colorText(devolucaoColor)}`}>{taxaDevolucao}%</p>
+            <p className="text-xs text-[#94A3B8] mt-2">{totalDevolucoes} devoluções registradas</p>
           </CardContent>
         </Card>
 
-        {/* Pontualidade da Rota */}
+        {/* Pontualidade */}
         <Card className={`shadow-sm border-l-4 ${colorBorder(pontualidadeColor)}`}>
           <CardContent className="p-4">
             <div className="flex items-center justify-between mb-2">
@@ -363,67 +351,51 @@ export default function MotoristaDashboardPage() {
               </div>
               <Award className={`w-5 h-5 ${colorText(pontualidadeColor)}`} />
             </div>
-            <p className="text-xs text-[#64748B] mb-1">Pontualidade da Rota</p>
-            <p className={`text-2xl font-bold ${colorText(pontualidadeColor)}`}>
-              {performance.pontualidadeRota}%
-            </p>
-            <p className="text-xs text-[#94A3B8] mt-2">
-              {performance.rotasNoPrazo} de {performance.totalRotas} rotas no prazo
-            </p>
+            <p className="text-xs text-[#64748B] mb-1">Pontualidade</p>
+            <p className={`text-2xl font-bold ${colorText(pontualidadeColor)}`}>{pontualidade}%</p>
+            <div className="mt-2 w-full h-1.5 bg-slate-200 rounded-full overflow-hidden">
+              <div
+                className={`h-full rounded-full ${pontualidade >= 90 ? 'bg-green-500' : pontualidade >= 70 ? 'bg-amber-500' : 'bg-red-500'}`}
+                style={{ width: `${Math.min(pontualidade, 100)}%` }}
+              />
+            </div>
           </CardContent>
         </Card>
       </div>
 
-      {/* Gráficos e Análises */}
+      {/* ── Gráficos ── */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        {/* Histórico Mensal */}
+        {/* Histórico Mensal — LineChart */}
         <Card className="shadow-sm">
           <CardHeader>
             <CardTitle className="text-[#1E293B] flex items-center gap-2">
               <Activity className="w-5 h-5 text-[#1E3A8A]" />
               Histórico de Performance
             </CardTitle>
-            <p className="text-xs text-[#64748B]">
-              Evolução da efetividade e pontualidade nos últimos 6 meses
-            </p>
+            <p className="text-xs text-[#64748B]">Evolução da efetividade e pontualidade — últimos 6 meses</p>
           </CardHeader>
           <CardContent>
-            <ResponsiveContainer width="100%" height={300}>
-              <LineChart data={performance.historicoMensal}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#E2E8F0" />
-                <XAxis dataKey="mes" tick={{ fill: '#64748B', fontSize: 12 }} />
-                <YAxis tick={{ fill: '#64748B', fontSize: 12 }} domain={[0, 100]} />
-                <Tooltip
-                  contentStyle={{
-                    backgroundColor: '#ffffff',
-                    border: '1px solid #E2E8F0',
-                    borderRadius: '8px',
-                    fontSize: '12px',
-                  }}
-                />
-                <Legend wrapperStyle={{ fontSize: '12px' }} />
-                <Line
-                  type="monotone"
-                  dataKey="efetividade"
-                  stroke={COLORS.green}
-                  strokeWidth={2}
-                  dot={{ fill: COLORS.green, r: 4 }}
-                  name="Efetividade (%)"
-                />
-                <Line
-                  type="monotone"
-                  dataKey="pontualidade"
-                  stroke={COLORS.blue}
-                  strokeWidth={2}
-                  dot={{ fill: COLORS.blue, r: 4 }}
-                  name="Pontualidade (%)"
-                />
-              </LineChart>
-            </ResponsiveContainer>
+            {entregas.length === 0 ? (
+              <div className="flex items-center justify-center h-[200px] text-[#94A3B8] text-sm">
+                Nenhum dado disponível ainda
+              </div>
+            ) : (
+              <ResponsiveContainer width="100%" height={300}>
+                <LineChart data={historicoMensal}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#E2E8F0" />
+                  <XAxis dataKey="mes" tick={{ fill: '#64748B', fontSize: 12 }} />
+                  <YAxis tick={{ fill: '#64748B', fontSize: 12 }} domain={[0, 100]} />
+                  <Tooltip contentStyle={{ backgroundColor: '#ffffff', border: '1px solid #E2E8F0', borderRadius: '8px', fontSize: '12px' }} />
+                  <Legend wrapperStyle={{ fontSize: '12px' }} />
+                  <Line type="monotone" dataKey="efetividade" stroke={COLORS.green} strokeWidth={2} dot={{ fill: COLORS.green, r: 4 }} name="Efetividade (%)" />
+                  <Line type="monotone" dataKey="pontualidade" stroke={COLORS.blue} strokeWidth={2} dot={{ fill: COLORS.blue, r: 4 }} name="Pontualidade (%)" />
+                </LineChart>
+              </ResponsiveContainer>
+            )}
           </CardContent>
         </Card>
 
-        {/* Volume de Entregas Mensal */}
+        {/* Volume Mensal — BarChart */}
         <Card className="shadow-sm">
           <CardHeader>
             <CardTitle className="text-[#1E293B] flex items-center gap-2">
@@ -433,62 +405,56 @@ export default function MotoristaDashboardPage() {
             <p className="text-xs text-[#64748B]">Quantidade de entregas realizadas por mês</p>
           </CardHeader>
           <CardContent>
-            <ResponsiveContainer width="100%" height={300}>
-              <BarChart data={performance.historicoMensal}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#E2E8F0" />
-                <XAxis dataKey="mes" tick={{ fill: '#64748B', fontSize: 12 }} />
-                <YAxis tick={{ fill: '#64748B', fontSize: 12 }} />
-                <Tooltip
-                  contentStyle={{
-                    backgroundColor: '#ffffff',
-                    border: '1px solid #E2E8F0',
-                    borderRadius: '8px',
-                    fontSize: '12px',
-                  }}
-                />
-                <Bar dataKey="entregas" fill={COLORS.blue} radius={[4, 4, 0, 0]} name="Entregas" />
-              </BarChart>
-            </ResponsiveContainer>
+            {entregas.length === 0 ? (
+              <div className="flex items-center justify-center h-[200px] text-[#94A3B8] text-sm">
+                Nenhuma entrega registrada
+              </div>
+            ) : (
+              <ResponsiveContainer width="100%" height={300}>
+                <BarChart data={historicoMensal}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#E2E8F0" />
+                  <XAxis dataKey="mes" tick={{ fill: '#64748B', fontSize: 12 }} />
+                  <YAxis tick={{ fill: '#64748B', fontSize: 12 }} />
+                  <Tooltip contentStyle={{ backgroundColor: '#ffffff', border: '1px solid #E2E8F0', borderRadius: '8px', fontSize: '12px' }} />
+                  <Bar dataKey="entregas" fill={COLORS.blue} radius={[4, 4, 0, 0]} name="Entregas" />
+                </BarChart>
+              </ResponsiveContainer>
+            )}
           </CardContent>
         </Card>
       </div>
 
-      {/* Motivos de Devolução + Resumo Estatístico */}
+      {/* ── Análise de Devoluções + Resumo ── */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         <Card className="shadow-sm lg:col-span-2">
           <CardHeader>
             <CardTitle className="text-[#1E293B] flex items-center gap-2">
               <AlertCircle className="w-5 h-5 text-[#DC2626]" />
-              Análise de Devoluções
+              Análise de Não-Entregas
             </CardTitle>
-            <p className="text-xs text-[#64748B]">
-              Principais motivos de medicamentos não entregues
-            </p>
+            <p className="text-xs text-[#64748B]">Registros de falha na última janela</p>
           </CardHeader>
           <CardContent>
-            <div className="space-y-3">
-              {performance.motivosDevolucao.map((motivo, idx) => (
-                <div key={idx} className="space-y-1">
-                  <div className="flex items-center justify-between text-sm">
-                    <span className="text-[#1E293B]">{motivo.motivo}</span>
-                    <div className="flex items-center gap-2">
-                      <span className="text-[#64748B]">{motivo.qtd} ocorrências</span>
-                      <span className="text-[#1E3A8A] font-semibold">
-                        {motivo.percentual.toFixed(1)}%
-                      </span>
+            {entregasFalha.length === 0 ? (
+              <div className="flex items-center justify-center py-8 gap-2 text-[#94A3B8]">
+                <CheckCircle className="w-5 h-5 text-green-500" />
+                <p className="text-sm">Nenhuma falha de entrega registrada</p>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {entregasFalha.slice(0, 5).map((e) => (
+                  <div key={e.id} className="flex items-start justify-between border-b border-slate-100 pb-3 last:border-0">
+                    <div>
+                      <p className="text-sm font-medium text-[#1E293B]">{e.paciente_nome}</p>
+                      <p className="text-xs text-[#64748B] mt-0.5">
+                        {format(parseISO(e.created_at), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })}
+                      </p>
                     </div>
+                    <Badge className="bg-red-50 text-red-700 border-red-200 text-xs">Falha</Badge>
                   </div>
-                  <div className="w-full h-2 bg-[#E2E8F0] rounded-full overflow-hidden">
-                    <div
-                      className={`h-full rounded-full ${
-                        idx === 0 ? 'bg-[#DC2626]' : idx === 1 ? 'bg-[#F59E0B]' : 'bg-[#64748B]'
-                      }`}
-                      style={{ width: `${motivo.percentual}%` }}
-                    />
-                  </div>
-                </div>
-              ))}
-            </div>
+                ))}
+              </div>
+            )}
           </CardContent>
         </Card>
 
@@ -503,54 +469,37 @@ export default function MotoristaDashboardPage() {
           <CardContent className="space-y-4">
             <div className="bg-green-50 border border-green-200 rounded-lg p-3">
               <p className="text-xs text-green-700 mb-1">Entregas com Sucesso</p>
-              <p className="text-2xl text-green-700 font-bold">
-                {performance.entregasSucessoPrimeiraTentativa}
-              </p>
+              <p className="text-2xl text-green-700 font-bold">{entregasSucesso}</p>
             </div>
             <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
-              <p className="text-xs text-blue-700 mb-1">Total de Rotas</p>
-              <p className="text-2xl text-blue-700 font-bold">{performance.totalRotas}</p>
+              <p className="text-xs text-blue-700 mb-1">Total de Entregas</p>
+              <p className="text-2xl text-blue-700 font-bold">{totalEntregas}</p>
             </div>
             <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
               <p className="text-xs text-amber-700 mb-1">Tempo Médio de Rota</p>
-              <p className="text-2xl text-amber-700 font-bold">{performance.tempoMedioRotaMin} min</p>
+              <p className="text-2xl text-amber-700 font-bold">{tempoMedioRota} min</p>
             </div>
           </CardContent>
         </Card>
       </div>
 
-      {/* Indicadores de Qualidade do Serviço */}
+      {/* ── Indicadores de Qualidade ── */}
       <Card className="shadow-sm">
         <CardHeader>
           <CardTitle className="text-[#1E293B]">Indicadores de Qualidade do Serviço</CardTitle>
-          <p className="text-xs text-[#64748B]">Métricas comparativas com a média da equipe</p>
+          <p className="text-xs text-[#64748B]">Comparativo com as metas da equipe</p>
         </CardHeader>
         <CardContent>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
             {[
+              { label: 'Efetividade', color: efetividadeColor, meta: '≥ 95%', atual: `${indiceEfetividade}%` },
+              { label: 'Pontualidade', color: pontualidadeColor, meta: '≥ 90%', atual: `${pontualidade}%` },
+              { label: 'Taxa de Devolução', color: devolucaoColor, meta: '≤ 2%', atual: `${taxaDevolucao}%` },
               {
-                label: 'Efetividade',
-                color: efetividadeColor,
-                meta: '≥ 95%',
-                atual: `${performance.indiceEfetividade}%`,
-              },
-              {
-                label: 'Pontualidade',
-                color: pontualidadeColor,
-                meta: '≥ 90%',
-                atual: `${performance.pontualidadeRota}%`,
-              },
-              {
-                label: 'Taxa de Devolução',
-                color: devolucaoColor,
-                meta: '≤ 2%',
-                atual: `${performance.taxaDevolucao}%`,
-              },
-              {
-                label: 'Tempo/Parada',
-                color: performance.tempoMedioPorParada < 8 ? 'green' : 'amber',
-                meta: '≤ 10 min',
-                atual: `${performance.tempoMedioPorParada} min`,
+                label: 'Tempo de Rota',
+                color: tempoMedioRota < 180 || tempoMedioRota === 0 ? 'green' : tempoMedioRota < 240 ? 'amber' : 'red',
+                meta: '≤ 180 min',
+                atual: tempoMedioRota > 0 ? `${tempoMedioRota} min` : 'N/A',
               },
             ].map((item) => (
               <div key={item.label} className="space-y-2">
@@ -568,17 +517,15 @@ export default function MotoristaDashboardPage() {
                     {item.color === 'green' ? 'Excelente' : item.color === 'amber' ? 'Bom' : 'Atenção'}
                   </Badge>
                 </div>
-                <div className="text-xs text-[#94A3B8]">
-                  Meta: {item.meta} | Atual: {item.atual}
-                </div>
+                <div className="text-xs text-[#94A3B8]">Meta: {item.meta} | Atual: {item.atual}</div>
               </div>
             ))}
           </div>
         </CardContent>
       </Card>
 
-      {/* Inventário de Bordo */}
-      {performance.inventarioBordo && performance.inventarioBordo.length > 0 && (
+      {/* ── Inventário de Bordo ── */}
+      {inventarioBordo.length > 0 && (
         <Card className="shadow-sm border-l-4 border-l-[#1E3A8A]">
           <CardHeader>
             <div className="flex items-center justify-between">
@@ -592,134 +539,53 @@ export default function MotoristaDashboardPage() {
                 </p>
               </div>
               <Badge className="bg-blue-50 text-blue-700 border-blue-200">
-                {performance.inventarioBordo.length} itens
+                {inventarioBordo.reduce((acc, e) => acc + e.itens.length, 0)} itens
               </Badge>
             </div>
           </CardHeader>
           <CardContent>
-            {/* BANNER DE RECALL */}
-            {(() => {
-              const itensRecall = performance.inventarioBordo.filter((i) => i.status === 'RECALL');
-              if (!itensRecall.length) return null;
-              return (
-                <div className="mb-4 flex items-start gap-3 bg-red-50 border border-red-300 rounded-lg px-4 py-3">
-                  <ShieldAlert className="w-5 h-5 text-red-600 shrink-0 mt-0.5 animate-pulse" />
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-bold text-red-700">
-                      ⚠️ ALERTA DE RECALL SANITÁRIO
-                    </p>
-                    <p className="text-xs text-red-600 mt-0.5">
-                      <strong>{itensRecall.length}</strong> unidade(s) no bordo estão em status de RECALL.
-                      Não realize a entrega desses itens. Retorne-os imediatamente ao depósito e
-                      contate a supervisão.
-                    </p>
-                    <div className="mt-2 flex flex-wrap gap-1">
-                      {itensRecall.map((i) => (
-                        <span
-                          key={i.serialNumber}
-                          className="inline-flex items-center gap-1 bg-red-100 border border-red-200 rounded px-2 py-0.5 text-xs font-mono text-red-700"
-                        >
-                          {i.serialNumber} — {i.medicamento}
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-                  <a
-                    href="/dashboard/recall"
-                    className="shrink-0 text-xs font-semibold text-red-700 underline hover:text-red-900"
-                  >
-                    Ver Recall →
-                  </a>
-                </div>
-              );
-            })()}
-
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-[#E2E8F0]">
-                    <th className="text-left py-3 px-2 text-xs text-[#64748B] font-semibold">
-                      Serial Number
-                    </th>
-                    <th className="text-left py-3 px-2 text-xs text-[#64748B] font-semibold">
-                      Batch ID
-                    </th>
-                    <th className="text-left py-3 px-2 text-xs text-[#64748B] font-semibold">
-                      Medicamento
-                    </th>
-                    <th className="text-center py-3 px-2 text-xs text-[#64748B] font-semibold">
-                      Qtd
-                    </th>
-                    <th className="text-left py-3 px-2 text-xs text-[#64748B] font-semibold">
-                      Destinatário
-                    </th>
-                    <th className="text-center py-3 px-2 text-xs text-[#64748B] font-semibold">
-                      Temp.
-                    </th>
-                    <th className="text-center py-3 px-2 text-xs text-[#64748B] font-semibold">
-                      Status
-                    </th>
+                    <th className="text-left py-3 px-2 text-xs text-[#64748B] font-semibold">Serial Number</th>
+                    <th className="text-left py-3 px-2 text-xs text-[#64748B] font-semibold">Batch ID</th>
+                    <th className="text-left py-3 px-2 text-xs text-[#64748B] font-semibold">Medicamento</th>
+                    <th className="text-left py-3 px-2 text-xs text-[#64748B] font-semibold">Destinatário</th>
+                    <th className="text-center py-3 px-2 text-xs text-[#64748B] font-semibold">Temp.</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {performance.inventarioBordo.map((item, idx) => (
-                    <tr key={idx} className="border-b border-[#E2E8F0] hover:bg-[#F8FAFC]">
-                      <td className="py-3 px-2">
-                        <div className="flex items-center gap-1.5">
-                          <Fingerprint className="w-3 h-3 text-[#1E3A8A]" />
-                          <span className="font-mono text-xs text-[#1E3A8A] font-semibold">
-                            {item.serialNumber}
-                          </span>
-                        </div>
-                      </td>
-                      <td className="py-3 px-2">
-                        <div className="flex items-center gap-1.5">
-                          <FileText className="w-3 h-3 text-[#1E3A8A]" />
-                          <span className="font-mono text-xs text-[#1E3A8A]">{item.batchId}</span>
-                        </div>
-                      </td>
-                      <td className="py-3 px-2">
-                        <span className="text-xs text-[#1E293B] font-medium">
-                          {item.medicamento}
-                        </span>
-                      </td>
-                      <td className="py-3 px-2 text-center">
-                        <span className="text-xs text-[#64748B]">{item.quantidade}</span>
-                      </td>
-                      <td className="py-3 px-2">
-                        <span className="text-xs text-[#64748B]">{item.destinatario}</span>
-                      </td>
-                      <td className="py-3 px-2 text-center">
-                        <div className="flex items-center justify-center gap-1">
-                          <Thermometer className="w-3 h-3 text-[#94A3B8]" />
-                          <span
-                            className={`text-xs font-semibold ${
-                              item.tempAtual > 5
-                                ? 'text-red-600'
-                                : item.tempAtual < 2
-                                ? 'text-amber-600'
-                                : 'text-[#16A34A]'
-                            }`}
-                          >
-                            {item.tempAtual}°C
-                          </span>
-                        </div>
-                      </td>
-                      <td className="py-3 px-2 text-center">
-                        <Badge
-                          className={`text-xs ${
-                            item.status === 'RECALL'
-                              ? 'bg-red-100 text-red-700 border-red-300 font-bold'
-                              : item.status === 'Em trânsito'
-                              ? 'bg-blue-50 text-blue-700 border-blue-200'
-                              : 'bg-gray-50 text-gray-700 border-gray-200'
-                          }`}
-                        >
-                          {item.status === 'RECALL' ? '⚠️ RECALL' : item.status}
-                        </Badge>
-                      </td>
-                    </tr>
-                  ))}
+                  {inventarioBordo.flatMap((e) =>
+                    e.itens.map((item, idx) => (
+                      <tr key={`${e.id}-${idx}`} className="border-b border-[#E2E8F0] hover:bg-[#F8FAFC]">
+                        <td className="py-3 px-2">
+                          <div className="flex items-center gap-1.5">
+                            <Fingerprint className="w-3 h-3 text-[#1E3A8A]" />
+                            <span className="font-mono text-xs text-[#1E3A8A] font-semibold">{item.serial_number}</span>
+                          </div>
+                        </td>
+                        <td className="py-3 px-2">
+                          <div className="flex items-center gap-1.5">
+                            <FileText className="w-3 h-3 text-[#1E3A8A]" />
+                            <span className="font-mono text-xs text-[#1E3A8A]">{item.lote_codigo}</span>
+                          </div>
+                        </td>
+                        <td className="py-3 px-2">
+                          <span className="text-xs text-[#1E293B] font-medium">{item.medicamento_nome}</span>
+                        </td>
+                        <td className="py-3 px-2">
+                          <span className="text-xs text-[#64748B]">{e.paciente_nome}</span>
+                        </td>
+                        <td className="py-3 px-2 text-center">
+                          <div className="flex items-center justify-center gap-1">
+                            <Thermometer className="w-3 h-3 text-[#94A3B8]" />
+                            <span className="text-xs text-[#94A3B8]">—°C</span>
+                          </div>
+                        </td>
+                      </tr>
+                    ))
+                  )}
                 </tbody>
               </table>
             </div>
@@ -727,9 +593,8 @@ export default function MotoristaDashboardPage() {
               <div className="flex items-center gap-2">
                 <ShieldAlert className="w-4 h-4 text-amber-700" />
                 <p className="text-xs text-amber-900">
-                  <strong>Responsabilidade Legal:</strong> Todos os itens listados estão sob
-                  custódia do motorista {motorista.motoristaCodigo}. Qualquer extravio deve ser
-                  reportado imediatamente.
+                  <strong>Responsabilidade Legal:</strong> Todos os itens listados estão sob custódia do motorista{' '}
+                  <strong>{motorista.nome}</strong>. Qualquer extravio deve ser reportado imediatamente.
                 </p>
               </div>
             </div>
@@ -737,217 +602,126 @@ export default function MotoristaDashboardPage() {
         </Card>
       )}
 
-      {/* Histórico de Comprovações */}
-      {performance.historicoComprovacoes && performance.historicoComprovacoes.length > 0 && (
-        <Card className="shadow-sm border-l-4 border-l-[#16A34A]">
-          <CardHeader>
-            <div className="flex items-center justify-between">
-              <div>
-                <CardTitle className="text-[#1E293B] flex items-center gap-2">
-                  <Camera className="w-5 h-5 text-[#16A34A]" />
-                  Histórico de Comprovações
-                </CardTitle>
-                <p className="text-xs text-[#64748B] mt-1">
-                  Fotos e assinaturas coletadas em entregas finalizadas
-                </p>
-              </div>
-              <Badge className="bg-green-50 text-green-700 border-green-200">
-                {performance.historicoComprovacoes.length} comprovantes
-              </Badge>
-            </div>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {performance.historicoComprovacoes.map((comprovante) => (
-                <div
-                  key={comprovante.id}
-                  className="bg-white border border-[#E2E8F0] rounded-lg overflow-hidden"
-                >
-                  <div className="relative h-48 bg-[#F8FAFC]">
-                    <img
-                      src={comprovante.fotoUrl}
-                      alt={`Entrega para ${comprovante.paciente}`}
-                      className="w-full h-full object-cover"
-                    />
-                    <div className="absolute top-2 right-2">
-                      <Badge className="bg-green-500 text-white border-0">
-                        <CheckCircle className="w-3 h-3 mr-1" />
-                        Entregue
-                      </Badge>
-                    </div>
-                  </div>
-                  <div className="p-3 space-y-2">
-                    <div>
-                      <p className="text-sm text-[#1E293B] font-semibold">{comprovante.paciente}</p>
-                      <p className="text-xs text-[#64748B]">{comprovante.dataHora}</p>
-                    </div>
-                    <div className="bg-[#F8FAFC] rounded p-2">
-                      <div className="flex items-center gap-1 text-xs text-[#64748B] mb-1">
-                        <Package className="w-3 h-3" />
-                        <span>{comprovante.medicamentos}</span>
-                      </div>
-                      <div className="flex items-center gap-1 text-xs">
-                        <FileText className="w-3 h-3 text-[#1E3A8A]" />
-                        <span className="text-[#64748B]">Dispense ID:</span>
-                        <span className="font-mono text-[#1E3A8A] font-semibold">
-                          {comprovante.dispenseId}
-                        </span>
-                      </div>
-                    </div>
-                    <div className="border border-[#E2E8F0] rounded p-2">
-                      <div className="flex items-center gap-1 text-xs text-[#64748B] mb-1">
-                        <PenTool className="w-3 h-3" />
-                        <span>Assinatura Digital:</span>
-                      </div>
-                      <img
-                        src={comprovante.assinaturaUrl}
-                        alt="Assinatura"
-                        className="w-full h-12 object-contain bg-white"
-                      />
-                    </div>
-                  </div>
+      {/* ── Tabs: Comprovações | Alertas ── */}
+      <Card className="shadow-sm">
+        <CardHeader>
+          {/* Tabs */}
+          <div className="flex gap-1 border-b border-slate-200 -mb-4">
+            {[
+              { key: 'comprovacoes', label: `Comprovações (${comprovacoes.length})`, icon: Camera },
+              { key: 'alertas', label: 'Alertas de Anomalia', icon: AlertTriangle },
+            ].map(({ key, label, icon: Icon }) => (
+              <button
+                key={key}
+                onClick={() => setAbaAtiva(key as any)}
+                className={`flex items-center gap-1.5 px-4 py-2.5 text-sm font-semibold transition-colors border-b-2 -mb-px ${
+                  abaAtiva === key
+                    ? 'border-[#1E3A8A] text-[#1E3A8A]'
+                    : 'border-transparent text-[#64748B] hover:text-[#1E293B]'
+                }`}
+              >
+                <Icon className="w-4 h-4" />
+                {label}
+              </button>
+            ))}
+          </div>
+        </CardHeader>
+
+        <CardContent className="pt-4">
+          {/* Aba Comprovações */}
+          {abaAtiva === 'comprovacoes' && (
+            <>
+              {comprovacoes.length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-12 gap-3 text-[#94A3B8]">
+                  <Camera className="w-10 h-10" />
+                  <p className="text-sm">Nenhuma comprovação registrada</p>
+                  <p className="text-xs">As fotos e assinaturas aparecerão aqui após as entregas</p>
                 </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Alertas de Anomalia */}
-      {performance.alertasAnomalia && performance.alertasAnomalia.length > 0 && (
-        <Card className="shadow-sm border-l-4 border-l-[#DC2626]">
-          <CardHeader>
-            <div className="flex items-center justify-between">
-              <div>
-                <CardTitle className="text-[#1E293B] flex items-center gap-2">
-                  <AlertTriangle className="w-5 h-5 text-[#DC2626]" />
-                  Alertas de Anomalia
-                </CardTitle>
-                <p className="text-xs text-[#64748B] mt-1">
-                  Registro de desvios de rota, paradas excessivas e outras anomalias
-                </p>
-              </div>
-              <Badge className="bg-red-50 text-red-700 border-red-200">
-                {performance.alertasAnomalia.length} alertas
-              </Badge>
-            </div>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-3">
-              {performance.alertasAnomalia.map((alerta) => (
-                <div
-                  key={alerta.id}
-                  className={`border-2 rounded-lg p-4 ${
-                    alerta.gravidade === 'Alta'
-                      ? 'border-red-300 bg-red-50'
-                      : alerta.gravidade === 'Média'
-                      ? 'border-amber-300 bg-amber-50'
-                      : 'border-blue-300 bg-blue-50'
-                  }`}
-                >
-                  <div className="flex items-start justify-between mb-3">
-                    <div className="flex items-center gap-2">
-                      {alerta.tipo === 'Desvio de Rota' ? (
-                        <Navigation
-                          className={`w-5 h-5 ${
-                            alerta.gravidade === 'Alta' ? 'text-red-700' : 'text-amber-700'
-                          }`}
-                        />
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {comprovacoes.slice(0, 6).map((e) => (
+                    <div
+                      key={e.id}
+                      className="bg-white border border-[#E2E8F0] rounded-lg overflow-hidden"
+                    >
+                      {/* Foto */}
+                      {e.foto_comprovante_url ? (
+                        <div className="relative h-40 bg-[#F8FAFC]">
+                          <img
+                            src={e.foto_comprovante_url}
+                            alt={`Entrega para ${e.paciente_nome}`}
+                            className="w-full h-full object-cover"
+                          />
+                          <div className="absolute top-2 right-2">
+                            <Badge className="bg-green-500 text-white border-0">
+                              <CheckCircle className="w-3 h-3 mr-1" />
+                              Entregue
+                            </Badge>
+                          </div>
+                        </div>
                       ) : (
-                        <Clock
-                          className={`w-5 h-5 ${
-                            alerta.gravidade === 'Alta' ? 'text-red-700' : 'text-blue-700'
-                          }`}
-                        />
+                        <div className="h-20 bg-[#F8FAFC] flex items-center justify-center">
+                          <Camera className="w-8 h-8 text-[#CBD5E1]" />
+                        </div>
                       )}
-                      <div>
-                        <p
-                          className={`text-sm font-semibold ${
-                            alerta.gravidade === 'Alta'
-                              ? 'text-red-900'
-                              : alerta.gravidade === 'Média'
-                              ? 'text-amber-900'
-                              : 'text-blue-900'
-                          }`}
-                        >
-                          {alerta.tipo}
-                        </p>
-                        <p className="text-xs text-[#64748B]">{alerta.dataHora}</p>
+                      <div className="p-3 space-y-2">
+                        <div>
+                          <p className="text-sm text-[#1E293B] font-semibold">{e.paciente_nome}</p>
+                          <p className="text-xs text-[#64748B]">
+                            {format(parseISO(e.created_at), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })}
+                          </p>
+                        </div>
+                        {e.itens.length > 0 && (
+                          <div className="bg-[#F8FAFC] rounded p-2">
+                            <div className="flex items-center gap-1 text-xs text-[#64748B]">
+                              <Package className="w-3 h-3" />
+                              <span>{e.itens.map((i) => i.medicamento_nome).join(', ')}</span>
+                            </div>
+                          </div>
+                        )}
+                        {e.assinatura_digital_url && (
+                          <div className="border border-[#E2E8F0] rounded p-2">
+                            <div className="flex items-center gap-1 text-xs text-[#64748B] mb-1">
+                              <PenTool className="w-3 h-3" />
+                              <span>Assinatura Digital:</span>
+                            </div>
+                            <img
+                              src={e.assinatura_digital_url}
+                              alt="Assinatura"
+                              className="w-full h-12 object-contain bg-white"
+                            />
+                          </div>
+                        )}
                       </div>
                     </div>
-                    <div className="flex items-center gap-2">
-                      <Badge
-                        className={
-                          alerta.gravidade === 'Alta'
-                            ? 'bg-red-100 text-red-700 border-red-200'
-                            : alerta.gravidade === 'Média'
-                            ? 'bg-amber-100 text-amber-700 border-amber-200'
-                            : 'bg-blue-100 text-blue-700 border-blue-200'
-                        }
-                      >
-                        {alerta.gravidade}
-                      </Badge>
-                      <Badge
-                        className={
-                          alerta.status === 'Justificado'
-                            ? 'bg-green-100 text-green-700 border-green-200'
-                            : alerta.status === 'Resolvido'
-                            ? 'bg-blue-100 text-blue-700 border-blue-200'
-                            : 'bg-amber-100 text-amber-700 border-amber-200'
-                        }
-                      >
-                        {alerta.status}
-                      </Badge>
-                    </div>
-                  </div>
-
-                  <div className="space-y-2">
-                    <p className="text-sm text-[#1E293B]">{alerta.descricao}</p>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-xs">
-                      <div className="flex items-center gap-1 text-[#64748B]">
-                        <MapPin className="w-3 h-3" />
-                        <span>{alerta.localizacao}</span>
-                      </div>
-                      <div className="flex items-center gap-1 text-[#64748B]">
-                        <Package className="w-3 h-3" />
-                        <span>{alerta.medicamentosEmRisco}</span>
-                      </div>
-                    </div>
-                    {alerta.valorEmRisco > 0 && (
-                      <div className="flex items-center gap-1 bg-white/60 rounded px-2 py-1">
-                        <DollarSign className="w-4 h-4 text-red-700" />
-                        <span className="text-xs text-[#64748B]">Valor em risco:</span>
-                        <span className="text-sm text-red-700 font-bold">
-                          R$ {alerta.valorEmRisco.toFixed(2)}
-                        </span>
-                      </div>
-                    )}
-                    {alerta.justificativa && (
-                      <div className="bg-white border border-[#E2E8F0] rounded p-2 mt-2">
-                        <p className="text-xs text-[#64748B] mb-1">
-                          <strong>Justificativa do motorista:</strong>
-                        </p>
-                        <p className="text-xs text-[#1E293B] italic">
-                          &ldquo;{alerta.justificativa}&rdquo;
-                        </p>
-                      </div>
-                    )}
-                  </div>
+                  ))}
                 </div>
-              ))}
-            </div>
-            <div className="mt-4 bg-blue-50 border border-blue-200 rounded-lg p-3">
-              <div className="flex items-center gap-2">
-                <AlertCircle className="w-4 h-4 text-blue-700" />
-                <p className="text-xs text-blue-900">
-                  <strong>Protocolo de Segurança:</strong> Todos os alertas são monitorados em
-                  tempo real. Desvios injustificados podem resultar em ações disciplinares.
-                </p>
+              )}
+            </>
+          )}
+
+          {/* Aba Alertas */}
+          {abaAtiva === 'alertas' && (
+            <div className="flex flex-col items-center justify-center py-12 gap-3 text-[#94A3B8]">
+              <AlertTriangle className="w-10 h-10" />
+              <p className="text-sm font-medium text-[#64748B]">Nenhum alerta registrado</p>
+              <p className="text-xs text-center max-w-xs">
+                Alertas de desvio de rota e paradas excessivas serão exibidos aqui quando detectados pelo sistema de monitoramento
+              </p>
+              <div className="mt-2 bg-blue-50 border border-blue-200 rounded-lg p-3 max-w-sm w-full">
+                <div className="flex items-center gap-2">
+                  <AlertCircle className="w-4 h-4 text-blue-700 flex-shrink-0" />
+                  <p className="text-xs text-blue-900">
+                    <strong>Protocolo de Segurança:</strong> Todos os alertas são monitorados em
+                    tempo real. Desvios injustificados podem resultar em ações disciplinares.
+                  </p>
+                </div>
               </div>
             </div>
-          </CardContent>
-        </Card>
-      )}
+          )}
+        </CardContent>
+      </Card>
+
     </div>
   );
 }
