@@ -11,6 +11,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { UserSearch, CreditCard, Save, AlertCircle, CheckCircle, ArrowLeft } from 'lucide-react';
 import { toast } from 'sonner';
 import { api, Paciente } from '@/lib/api';
+import { supabase } from '@/lib/supabase';
 import { validateCNS, formatCNS, normalizeCPF, normalizeCNS } from '@/utils/validate-cns';
 
 export default function VinculoSUSPage() {
@@ -87,7 +88,7 @@ export default function VinculoSUSPage() {
     try {
       // Atualizar paciente com CNS (se fornecido)
       if (cnsLimpo) {
-        const { error } = await api.supabase
+        const { error } = await supabase
           .from('pacientes')
           .update({ cartao_sus: cnsLimpo })
           .eq('id', pacienteEncontrado.id);
