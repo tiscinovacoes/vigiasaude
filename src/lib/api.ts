@@ -17,6 +17,7 @@ export type Medicamento = {
   dosagem: string | null;
   estoque_minimo: number;
   preco_teto_cmed: number;
+  preco_bps?: number | null;
   fornecedor_preferencial_id?: string | null;
   codigo_catmat?: string | null;
   unidade_fornecimento?: string | null;

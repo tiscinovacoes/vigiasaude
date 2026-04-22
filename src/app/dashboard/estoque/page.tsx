@@ -766,9 +766,16 @@ function EstoqueContent() {
                         <p className="text-sm font-bold text-slate-800 truncate">{entradaMedNome}</p>
                         {(() => {
                           const selectedMed = medicamentos.find(m => m.id === formEntrada.med_id);
-                          return selectedMed?.preco_teto_cmed ? (
-                            <p className="text-[10px] font-bold text-blue-600">CMED Teto: R$ {selectedMed.preco_teto_cmed.toFixed(2)}</p>
-                          ) : null;
+                          return (
+                            <div className="flex items-center gap-2 flex-wrap">
+                              {selectedMed?.preco_teto_cmed ? (
+                                <span className="text-[10px] font-bold text-blue-600">CMED: R$ {selectedMed.preco_teto_cmed.toFixed(2)}</span>
+                              ) : null}
+                              {selectedMed?.preco_bps ? (
+                                <span className="text-[10px] font-bold text-amber-600">BPS: R$ {selectedMed.preco_bps.toFixed(2)}</span>
+                              ) : null}
+                            </div>
+                          );
                         })()}
                       </div>
                       <button
@@ -848,9 +855,10 @@ function EstoqueContent() {
                                   </span>
                                 )}
                               </div>
-                              <div className="flex items-center gap-3 mt-0.5">
+                              <div className="flex items-center gap-3 mt-0.5 flex-wrap">
                                 {m.unidade_fornecimento && <span className="text-[10px] text-slate-400">{m.unidade_fornecimento}</span>}
                                 {m.preco_teto_cmed > 0 && <span className="text-[10px] font-bold text-blue-600">CMED R$ {m.preco_teto_cmed.toFixed(2)}</span>}
+                                {m.preco_bps && m.preco_bps > 0 && <span className="text-[10px] font-bold text-amber-600">BPS R$ {m.preco_bps.toFixed(2)}</span>}
                               </div>
                             </button>
                           ))}
