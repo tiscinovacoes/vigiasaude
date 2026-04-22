@@ -10,7 +10,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { UserSearch, CreditCard, Save, AlertCircle, CheckCircle, ArrowLeft } from 'lucide-react';
 import { toast } from 'sonner';
-import { api, Paciente } from '@/lib/api';
+import { api, auditoriaAPI, Paciente } from '@/lib/api';
 import { supabase } from '@/lib/supabase';
 import { validateCNS, formatCNS, normalizeCPF, normalizeCNS } from '@/utils/validate-cns';
 
@@ -97,7 +97,7 @@ export default function VinculoSUSPage() {
       }
 
       // Log auditoria
-      await api.auditoriaAPI.log('VINCULAR_PACIENTE_CNS', 'pacientes', {
+      await auditoriaAPI.log('VINCULAR_PACIENTE_CNS', 'pacientes', {
         paciente_id: pacienteEncontrado.id,
         cpf: cpfLimpo,
         cartao_sus: cnsLimpo || null,

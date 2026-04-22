@@ -1850,7 +1850,7 @@ export function haversineKm(lat1: number, lon1: number, lat2: number, lon2: numb
 
 export const auditoriaAPI = {
 
-  async log(acao: 'CREATE' | 'UPDATE' | 'DELETE' | 'ALERTA_SEGURANCA' | 'FEFO_BLOCK' | 'BUSCA_IDENTIFICADOR_CPF' | 'BUSCA_IDENTIFICADOR_CNS' | 'BUSCA_IDENTIFICADOR_NAO_ENCONTRADO', entidade: string, metadados: any) {
+  async log(acao: 'CREATE' | 'UPDATE' | 'DELETE' | 'ALERTA_SEGURANCA' | 'FEFO_BLOCK' | 'BUSCA_IDENTIFICADOR_CPF' | 'BUSCA_IDENTIFICADOR_CNS' | 'BUSCA_IDENTIFICADOR_NAO_ENCONTRADO' | 'ACESSO_DASHBOARD_SANEAMENTO' | 'ACESSO_RELATORIO_INCONSISTENCIAS' | 'VALIDACAO_CNS_SUCESSO' | 'VALIDACAO_CNS_MANUAL' | 'VINCULAR_PACIENTE_CNS', entidade: string, metadados: any) {
     try {
       const user = (await supabase.auth.getUser()).data?.user?.email || 'System';
 

@@ -22,7 +22,7 @@ import {
   ArrowLeft,
 } from 'lucide-react';
 import { toast } from 'sonner';
-import { api } from '@/lib/api';
+import { api, auditoriaAPI } from '@/lib/api';
 import { useRouter } from 'next/navigation';
 
 interface SaneamentoStatus {
@@ -46,7 +46,7 @@ export default function SaneamentoPage() {
         setStatus(dados);
 
         // Log auditoria
-        await api.auditoriaAPI.log('ACESSO_DASHBOARD_SANEAMENTO', 'pacientes', {
+        await auditoriaAPI.log('ACESSO_DASHBOARD_SANEAMENTO', 'pacientes', {
           total_pacientes: dados.total_pacientes,
           cns_valido: dados.cns_valido,
           cns_ausente: dados.cns_ausente,
@@ -265,7 +265,7 @@ export default function SaneamentoPage() {
                     cy="50%"
                     labelLine={false}
                     label={({ name, value, percent }) =>
-                      `${name}: ${value} (${(percent * 100).toFixed(0)}%)`
+                      `${name}: ${value} (${((percent ?? 0) * 100).toFixed(0)}%)`
                     }
                     outerRadius={120}
                     fill="#8884d8"

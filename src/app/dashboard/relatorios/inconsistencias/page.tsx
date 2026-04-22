@@ -19,7 +19,7 @@ import {
   ArrowLeft,
 } from 'lucide-react';
 import { toast } from 'sonner';
-import { api } from '@/lib/api';
+import { api, auditoriaAPI } from '@/lib/api';
 import { validateCNS } from '@/utils/validate-cns';
 import { useRouter } from 'next/navigation';
 
@@ -52,7 +52,7 @@ export default function InconsistenciasPage() {
         setInconsistencias(dados);
 
         // Log auditoria
-        await api.auditoriaAPI.log('ACESSO_RELATORIO_INCONSISTENCIAS', 'pacientes', {
+        await auditoriaAPI.log('ACESSO_RELATORIO_INCONSISTENCIAS', 'pacientes', {
           total_inconsistencias: dados.length,
           ausentes: dados.filter((d) => d.tipo_inconsistencia === 'AUSENTE').length,
           invalidos: dados.filter((d) => d.tipo_inconsistencia === 'INVALIDO').length,
@@ -94,7 +94,7 @@ export default function InconsistenciasPage() {
         if (isValid) {
           toast.success('✅ CNS válido! Este paciente pode ser movido para dados válidos.');
           // Log auditoria
-          await api.auditoriaAPI.log('VALIDACAO_CNS_SUCESSO', 'pacientes', {
+          await auditoriaAPI.log('VALIDACAO_CNS_SUCESSO', 'pacientes', {
             paciente_id: paciente.id,
             cartao_sus: paciente.cartao_sus,
           });
@@ -106,7 +106,7 @@ export default function InconsistenciasPage() {
       }
 
       // Log auditoria
-      await api.auditoriaAPI.log('VALIDACAO_CNS_MANUAL', 'pacientes', {
+      await auditoriaAPI.log('VALIDACAO_CNS_MANUAL', 'pacientes', {
         paciente_id: paciente.id,
         cartao_sus: paciente.cartao_sus || null,
         tipo_inconsistencia: paciente.tipo_inconsistencia,
