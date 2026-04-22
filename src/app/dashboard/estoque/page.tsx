@@ -745,14 +745,14 @@ function EstoqueContent() {
 
       {/* Modal - Nova Entrada */}
       {showNovaEntrada && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[1001] p-4" onClick={() => { setShowNovaEntrada(false); setValidacaoEntrada(null); }}>
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[1001] p-4" onClick={() => { setShowNovaEntrada(false); setValidacaoEntrada(null); setBuscaEntrada(''); setFormEntrada({ med_id: '', lote: '', validade: '', qtd: '', preco: '', fornecedor_id: '', data_entrada: '', compra_id: '', data_solicitacao_compra: '' }); }}>
           <Card className="w-full max-w-lg shadow-2xl bg-white border-0" onClick={e => e.stopPropagation()}>
             <CardHeader className="border-b border-slate-100">
                <div className="flex items-center justify-between">
                   <CardTitle className="text-lg font-black text-slate-900 flex items-center gap-2">
                      <Plus className="text-emerald-600"/> NOVA ENTRADA (ESTOQUE)
                   </CardTitle>
-                  <button onClick={() => { setShowNovaEntrada(false); setValidacaoEntrada(null); }} className="text-slate-300 hover:text-slate-600 transition-colors"><X size={24}/></button>
+                  <button onClick={() => { setShowNovaEntrada(false); setValidacaoEntrada(null); setBuscaEntrada(''); setFormEntrada({ med_id: '', lote: '', validade: '', qtd: '', preco: '', fornecedor_id: '', data_entrada: '', compra_id: '', data_solicitacao_compra: '' }); }} className="text-slate-300 hover:text-slate-600 transition-colors"><X size={24}/></button>
                </div>
             </CardHeader>
             <CardContent className="p-6 space-y-4">
