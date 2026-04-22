@@ -74,6 +74,8 @@ function EstoqueContent() {
   const [rupturaMap, setRupturaMap] = useState<Record<string, { dias: number; status: string }>>({});
   const [busca, setBusca] = useState("");
   const [expandedMeds, setExpandedMeds] = useState<Set<string>>(new Set());
+  const [sortColumn, setSortColumn] = useState<'nome' | 'validade' | 'qtd' | 'est_minimo' | 'dias_cobertura' | 'status'>('nome');
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
   
   // Modais
   const [showNovoMedicamento, setShowNovoMedicamento] = useState(false);
@@ -235,9 +237,58 @@ function EstoqueContent() {
     setExpandedMeds(next);
   };
 
-  const filtered = medicamentos.filter(m =>
-    m.nome.toLowerCase().includes(busca.toLowerCase())
-  );
+  const handleSort = (column: typeof sortColumn) => {
+    if (sortColumn === column) {
+      setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortColumn(column);
+      setSortDirection('asc');
+    }
+  };
+
+  const filtered = medicamentos
+    .filter(m => m.nome.toLowerCase().includes(busca.toLowerCase()))
+    .sort((a, b) => {
+      let aVal: any = '';
+      let bVal: any = '';
+
+      if (sortColumn === 'nome') {
+        aVal = a.nome.toLowerCase();
+        bVal = b.nome.toLowerCase();
+      } else if (sortColumn === 'validade') {
+        const lotesA = (a.lotes || []).filter(l => l.quantidade_disponivel > 0);
+        const lotesB = (b.lotes || []).filter(l => l.quantidade_disponivel > 0);
+        aVal = lotesA.length > 0 ? new Date(lotesA[0].data_validade).getTime() : Infinity;
+        bVal = lotesB.length > 0 ? new Date(lotesB[0].data_validade).getTime() : Infinity;
+      } else if (sortColumn === 'qtd') {
+        aVal = (a.lotes || []).reduce((s, l) => s + (l.quantidade_disponivel || 0), 0);
+        bVal = (b.lotes || []).reduce((s, l) => s + (l.quantidade_disponivel || 0), 0);
+      } else if (sortColumn === 'est_minimo') {
+        aVal = a.estoque_minimo || 0;
+        bVal = b.estoque_minimo || 0;
+      } else if (sortColumn === 'dias_cobertura') {
+        aVal = rupturaMap[a.id]?.dias ?? Infinity;
+        bVal = rupturaMap[b.id]?.dias ?? Infinity;
+      } else if (sortColumn === 'status') {
+        const statusOrder = { 'CRITICO': 0, 'ATENCAO': 1, 'NORMAL': 2, 'SEM_CONSUMO': 3 };
+        const getStatus = (med: Medicamento) => {
+          const ruptura = rupturaMap[med.id];
+          const totalDisp = (med.lotes || []).reduce((s, l) => s + (l.quantidade_disponivel || 0), 0);
+          const semConsumo = ruptura?.status === 'SEM_CONSUMO' || med.estoque_minimo === 0;
+          if (semConsumo) return 'SEM_CONSUMO';
+          if (ruptura?.status === 'CRITICO' || (!ruptura?.status && totalDisp < med.estoque_minimo)) return 'CRITICO';
+          if (ruptura?.status === 'ATENCAO') return 'ATENCAO';
+          return 'NORMAL';
+        };
+        aVal = statusOrder[getStatus(a) as keyof typeof statusOrder] ?? 999;
+        bVal = statusOrder[getStatus(b) as keyof typeof statusOrder] ?? 999;
+      }
+
+      if (typeof aVal === 'string' && typeof bVal === 'string') {
+        return sortDirection === 'asc' ? aVal.localeCompare(bVal) : bVal.localeCompare(aVal);
+      }
+      return sortDirection === 'asc' ? aVal - bVal : bVal - aVal;
+    });
 
   async function handleNovoMedicamento() {
     if (!formMedicamento.nome || !formMedicamento.preco_teto_cmed) {
@@ -436,13 +487,25 @@ function EstoqueContent() {
                 <thead>
                   <tr className="bg-slate-50 border-b border-slate-100">
                     <th className="w-10"></th>
-                    <th className="text-left py-4 px-4 text-slate-400 text-[10px] font-black uppercase tracking-widest">Medicamento</th>
+                    <th className="text-left py-4 px-4 text-slate-400 text-[10px] font-black uppercase tracking-widest cursor-pointer hover:text-slate-600 transition-colors" onClick={() => handleSort('nome')}>
+                      Medicamento {sortColumn === 'nome' && (sortDirection === 'asc' ? '↑' : '↓')}
+                    </th>
                     <th className="text-left py-4 px-4 text-slate-400 text-[10px] font-black uppercase tracking-widest">Lote</th>
-                    <th className="text-left py-4 px-4 text-slate-400 text-[10px] font-black uppercase tracking-widest">Validade</th>
-                    <th className="text-right py-4 px-4 text-slate-400 text-[10px] font-black uppercase tracking-widest">Qtd. Atual</th>
-                    <th className="text-right py-4 px-4 text-slate-400 text-[10px] font-black uppercase tracking-widest">Est. Mínimo</th>
-                    <th className="text-right py-4 px-4 text-slate-400 text-[10px] font-black uppercase tracking-widest">Dias Cobertura</th>
-                    <th className="text-center py-4 px-4 text-slate-400 text-[10px] font-black uppercase tracking-widest">Status</th>
+                    <th className="text-left py-4 px-4 text-slate-400 text-[10px] font-black uppercase tracking-widest cursor-pointer hover:text-slate-600 transition-colors" onClick={() => handleSort('validade')}>
+                      Validade {sortColumn === 'validade' && (sortDirection === 'asc' ? '↑' : '↓')}
+                    </th>
+                    <th className="text-right py-4 px-4 text-slate-400 text-[10px] font-black uppercase tracking-widest cursor-pointer hover:text-slate-600 transition-colors" onClick={() => handleSort('qtd')}>
+                      Qtd. Atual {sortColumn === 'qtd' && (sortDirection === 'asc' ? '↑' : '↓')}
+                    </th>
+                    <th className="text-right py-4 px-4 text-slate-400 text-[10px] font-black uppercase tracking-widest cursor-pointer hover:text-slate-600 transition-colors" onClick={() => handleSort('est_minimo')}>
+                      Est. Mínimo {sortColumn === 'est_minimo' && (sortDirection === 'asc' ? '↑' : '↓')}
+                    </th>
+                    <th className="text-right py-4 px-4 text-slate-400 text-[10px] font-black uppercase tracking-widest cursor-pointer hover:text-slate-600 transition-colors" onClick={() => handleSort('dias_cobertura')}>
+                      Dias Cobertura {sortColumn === 'dias_cobertura' && (sortDirection === 'asc' ? '↑' : '↓')}
+                    </th>
+                    <th className="text-center py-4 px-4 text-slate-400 text-[10px] font-black uppercase tracking-widest cursor-pointer hover:text-slate-600 transition-colors" onClick={() => handleSort('status')}>
+                      Status {sortColumn === 'status' && (sortDirection === 'asc' ? '↑' : '↓')}
+                    </th>
                   </tr>
                 </thead>
                 <tbody>
