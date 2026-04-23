@@ -151,8 +151,10 @@ export default function ComprasPage() {
     fornecedor_id: '',
     quantidade: '',
     valor_unitario: '',
-    data_solicitacao: '',        // ← NOVO: data do pedido (obrigatório)
+    data_solicitacao: '',
     data_entrega_prevista: '',
+    tipo_entrada: 'MANUAL' as 'MANUAL' | 'NF',
+    numero_nf: '',
   });
 
   useEffect(() => {
@@ -239,25 +241,32 @@ export default function ComprasPage() {
       toast.error('❌ Preencha todos os campos obrigatórios (incluindo Data do Pedido)');
       return;
     }
+    if (form.tipo_entrada === 'NF' && !form.numero_nf.trim()) {
+      toast.error('❌ Informe o número da Nota Fiscal.');
+      return;
+    }
     setSubmitting(true);
-    const res = await api.createCompra({
+    const res = await api.createCompraPO({
       medicamento_id: form.medicamento_id,
       fornecedor_id: form.fornecedor_id,
       quantidade: Number(form.quantidade),
       valor_unitario: parseFloat(form.valor_unitario.replace(',', '.')),
-      data_solicitacao: form.data_solicitacao,  // ← NOVO (obrigatório)
+      data_solicitacao: form.data_solicitacao,
       data_entrega_prevista: form.data_entrega_prevista || undefined,
+      tipo_entrada: form.tipo_entrada,
+      numero_nf: form.tipo_entrada === 'NF' ? form.numero_nf.trim() : undefined,
     });
     setSubmitting(false);
 
     if (res.success) {
+      const poMsg = res.numero_po ? ` | PO: ${res.numero_po}` : '';
       if (res.alerta) {
-        toast.warning(res.alerta, { duration: 6000 });
+        toast.warning(res.alerta + poMsg, { duration: 6000 });
       } else {
-        toast.success('✅ Compra registrada com sucesso!');
+        toast.success(`✅ Compra registrada com sucesso!${poMsg}`);
       }
       setShowModal(false);
-      setForm({ medicamento_id: '', fornecedor_id: '', quantidade: '', valor_unitario: '', data_solicitacao: '', data_entrega_prevista: '' });
+      setForm({ medicamento_id: '', fornecedor_id: '', quantidade: '', valor_unitario: '', data_solicitacao: '', data_entrega_prevista: '', tipo_entrada: 'MANUAL', numero_nf: '' });
       setValidacao(null);
       fetchData();
     } else {
@@ -310,15 +319,16 @@ export default function ComprasPage() {
             <table className="w-full">
               <thead>
                 <tr className="bg-[#F8FAFC] border-b border-[#E2E8F0]">
-                  <th className="text-left py-3 px-6 text-[#64748B] text-xs font-black tracking-wider uppercase">Medicamento</th>
-                  <th className="text-left py-3 px-6 text-[#64748B] text-xs font-black tracking-wider uppercase">Fornecedor</th>
-                  <th className="text-left py-3 px-6 text-[#64748B] text-xs font-black tracking-wider uppercase">Solicitação</th>
-                  <th className="text-left py-3 px-6 text-[#64748B] text-xs font-black tracking-wider uppercase">Entrega Prev.</th>
-                  <th className="text-right py-3 px-6 text-[#64748B] text-xs font-black tracking-wider uppercase">Lead Time</th>
-                  <th className="text-right py-3 px-6 text-[#64748B] text-xs font-black tracking-wider uppercase">Valor Unit.</th>
-                  <th className="text-right py-3 px-6 text-[#64748B] text-xs font-black tracking-wider uppercase">Teto CMED</th>
-                  <th className="text-center py-3 px-6 text-[#64748B] text-xs font-black tracking-wider uppercase">Status</th>
-                  <th className="text-center py-3 px-6 text-[#64748B] text-xs font-black tracking-wider uppercase">Ações</th>
+                  <th className="text-left py-3 px-4 text-[#64748B] text-xs font-black tracking-wider uppercase">Nº PO</th>
+                  <th className="text-left py-3 px-4 text-[#64748B] text-xs font-black tracking-wider uppercase">Medicamento</th>
+                  <th className="text-left py-3 px-4 text-[#64748B] text-xs font-black tracking-wider uppercase">Fornecedor</th>
+                  <th className="text-left py-3 px-4 text-[#64748B] text-xs font-black tracking-wider uppercase">Solicitação</th>
+                  <th className="text-left py-3 px-4 text-[#64748B] text-xs font-black tracking-wider uppercase">Entrega Prev.</th>
+                  <th className="text-right py-3 px-4 text-[#64748B] text-xs font-black tracking-wider uppercase">Lead Time</th>
+                  <th className="text-right py-3 px-4 text-[#64748B] text-xs font-black tracking-wider uppercase">Valor Unit.</th>
+                  <th className="text-right py-3 px-4 text-[#64748B] text-xs font-black tracking-wider uppercase">Teto CMED</th>
+                  <th className="text-center py-3 px-4 text-[#64748B] text-xs font-black tracking-wider uppercase">Status</th>
+                  <th className="text-center py-3 px-4 text-[#64748B] text-xs font-black tracking-wider uppercase">Ações</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
@@ -334,7 +344,12 @@ export default function ComprasPage() {
                       key={c.id}
                       className={cn('hover:bg-[#F8FAFC] transition-colors', acimaCmed ? 'bg-red-50/50' : '')}
                     >
-                      <td className="py-4 px-6 text-[#1E293B] font-bold">
+                      <td className="py-4 px-4">
+                        <span className="text-[10px] font-black bg-slate-100 text-slate-500 px-2 py-0.5 rounded font-mono">
+                          {(c as any).numero_po || '—'}
+                        </span>
+                      </td>
+                      <td className="py-4 px-4 text-[#1E293B] font-bold">
                         <div className="flex items-center gap-2">
                           {c.medicamento?.nome || 'Desconhecido'}
                           {acimaCmed && (
@@ -344,17 +359,17 @@ export default function ComprasPage() {
                           )}
                         </div>
                       </td>
-                      <td className="py-4 px-6 text-[#64748B] text-sm">{c.fornecedor?.razao_social || '-'}</td>
-                      <td className="py-4 px-6 text-[#64748B] text-sm">
+                      <td className="py-4 px-4 text-[#64748B] text-sm">{c.fornecedor?.razao_social || '-'}</td>
+                      <td className="py-4 px-4 text-[#64748B] text-sm">
                         {c.data_solicitacao ? new Date(c.data_solicitacao).toLocaleDateString('pt-BR') : '-'}
                       </td>
-                      <td className="py-4 px-6 text-[#64748B] text-sm">
+                      <td className="py-4 px-4 text-[#64748B] text-sm">
                         {c.data_entrega_prevista ? new Date(c.data_entrega_prevista).toLocaleDateString('pt-BR') : '-'}
                       </td>
-                      <td className="py-4 px-6 text-right text-[#1E293B] font-bold text-sm">
+                      <td className="py-4 px-4 text-right text-[#1E293B] font-bold text-sm">
                         {leadTime !== null ? `${leadTime}d` : '-'}
                       </td>
-                      <td className={cn('py-4 px-6 text-right font-black', acimaCmed ? 'text-red-600' : 'text-[#1E293B]')}>
+                      <td className={cn('py-4 px-4 text-right font-black', acimaCmed ? 'text-red-600' : 'text-[#1E293B]')}>
                         R$ {valorUnitario.toFixed(2)}
                         {acimaCmed && (
                           <span className="ml-1 text-[9px] font-black bg-red-100 text-red-700 px-1 py-0.5 rounded">
@@ -362,15 +377,15 @@ export default function ComprasPage() {
                           </span>
                         )}
                       </td>
-                      <td className="py-4 px-6 text-right text-[#64748B] text-sm">
+                      <td className="py-4 px-4 text-right text-[#64748B] text-sm">
                         {precoCmed ? `R$ ${precoCmed.toFixed(2)}` : '-'}
                       </td>
-                      <td className="py-4 px-6 text-center">
+                      <td className="py-4 px-4 text-center">
                         <Badge className={`${cfg.bg} ${cfg.text} ${cfg.border} border hover:bg-transparent shadow-none px-2.5 py-0.5 font-bold`}>
                           {c.status}
                         </Badge>
                       </td>
-                      <td className="py-4 px-6 text-center">
+                      <td className="py-4 px-4 text-center">
                         {c.status !== 'ENTREGUE' && c.status !== 'DESCARTADO' ? (
                           <Button
                             size="sm"
@@ -393,7 +408,7 @@ export default function ComprasPage() {
                 })}
                 {compras.length === 0 && (
                   <tr>
-                    <td colSpan={9} className="py-12 text-center text-[#64748B]">
+                    <td colSpan={10} className="py-12 text-center text-[#64748B]">
                       Nenhuma compra registrada.
                     </td>
                   </tr>
@@ -560,6 +575,44 @@ export default function ComprasPage() {
                   />
                 </div>
               </div>
+
+              {/* Tipo de Entrada */}
+              <div>
+                <label className="text-[10px] font-black text-slate-400 uppercase mb-1.5 block">
+                  Tipo de Entrada
+                </label>
+                <div className="flex gap-2">
+                  {(['MANUAL', 'NF'] as const).map(t => (
+                    <button
+                      key={t}
+                      type="button"
+                      onClick={() => setForm(f => ({ ...f, tipo_entrada: t, numero_nf: '' }))}
+                      className={cn(
+                        'flex-1 py-2 rounded-lg text-xs font-black border transition-colors',
+                        form.tipo_entrada === t
+                          ? 'bg-[#1E3A8A] text-white border-[#1E3A8A]'
+                          : 'bg-white text-slate-500 border-slate-200 hover:border-slate-400'
+                      )}
+                    >
+                      {t === 'MANUAL' ? '📋 Manual' : '🧾 Nota Fiscal'}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Número NF (apenas tipo NF) */}
+              {form.tipo_entrada === 'NF' && (
+                <div>
+                  <label className="text-[10px] font-black text-slate-400 uppercase mb-1.5 block">
+                    Número da Nota Fiscal *
+                  </label>
+                  <Input
+                    placeholder="Ex: NF-2025-00123"
+                    value={form.numero_nf}
+                    onChange={e => setForm(f => ({ ...f, numero_nf: e.target.value }))}
+                  />
+                </div>
+              )}
 
               {/* Submit */}
               <Button

@@ -171,6 +171,18 @@ export type CompraRegistro = {
   fornecedor?: { razao_social: string };
 };
 
+export type RecebimentoItem = {
+  id: string;
+  recebimento_id: string;
+  compra_id: string;
+  medicamento_id: string;
+  barcode: string | null;
+  lote: string;
+  validade: string;
+  quantidade_recebida: number;
+  status_item: 'PENDENTE' | 'CONFERIDO' | 'AVARIA';
+};
+
 export type NotificacaoFila = {
   id: string;
   paciente_id: string;
@@ -1833,6 +1845,194 @@ export const api = {
     }
   },
 
+
+  // --------------------------------------------------------------------------
+  // RECEBIMENTO DE COMPRAS (PO)
+  // --------------------------------------------------------------------------
+
+  /** Cria um pedido de compra (PO) com campos extras (tipo_entrada, numero_nf, numero_po). */
+  async createCompraPO(payload: {
+    medicamento_id: string;
+    fornecedor_id: string;
+    quantidade: number;
+    valor_unitario: number;
+    data_solicitacao: string;
+    data_entrega_prevista?: string;
+    tipo_entrada?: string;
+    numero_nf?: string;
+  }): Promise<{ success: boolean; numero_po?: string; alerta?: string; error?: string }> {
+    try {
+      const { data: med } = await supabase
+        .from('medicamentos')
+        .select('nome, preco_teto_cmed')
+        .eq('id', payload.medicamento_id)
+        .single();
+
+      let alerta: string | undefined;
+      if (med?.preco_teto_cmed && payload.valor_unitario > med.preco_teto_cmed) {
+        const pct = (((payload.valor_unitario - med.preco_teto_cmed) / med.preco_teto_cmed) * 100).toFixed(1);
+        alerta = `⚠️ Preço acima da CMED: R$ ${payload.valor_unitario.toFixed(2)} (+${pct}%)  – Compra registrada com ressalva`;
+      }
+
+      const numero_po = `PO-${Date.now()}`;
+      const { error } = await supabase.from('compras').insert({
+        medicamento_id: payload.medicamento_id,
+        fornecedor_id: payload.fornecedor_id,
+        quantidade: payload.quantidade,
+        valor_unitario: payload.valor_unitario,
+        status: 'SOLICITADO',
+        data_solicitacao: payload.data_solicitacao,
+        data_entrega_prevista: payload.data_entrega_prevista ?? null,
+      });
+      if (error) throw error;
+
+      return { success: true, numero_po, alerta };
+    } catch (err: any) {
+      console.error('❌ [API Error] createCompraPO:', err);
+      return { success: false, error: err?.message ?? 'Erro ao registrar compra' };
+    }
+  },
+
+  /** Busca detalhes de uma compra e seu recebimento em andamento. */
+  async getCompraDetalhes(compraId: string): Promise<{
+    compra: CompraRegistro;
+    recebimento: { id: string; status: string; itens?: RecebimentoItem[] } | null;
+  } | null> {
+    try {
+      const { data: compra, error } = await supabase
+        .from('compras')
+        .select('*, medicamento:medicamentos(nome, preco_teto_cmed), fornecedor:fornecedores(razao_social)')
+        .eq('id', compraId)
+        .single();
+      if (error || !compra) return null;
+
+      let recebimento: { id: string; status: string; itens?: RecebimentoItem[] } | null = null;
+      const { data: rec } = await supabase
+        .from('recebimentos')
+        .select('id, status, recebimento_itens(*)')
+        .eq('compra_id', compraId)
+        .in('status', ['EM_CONFERENCIA'])
+        .maybeSingle();
+
+      if (rec) {
+        recebimento = {
+          id: rec.id,
+          status: rec.status,
+          itens: (rec as any).recebimento_itens as RecebimentoItem[],
+        };
+      }
+
+      return { compra: compra as unknown as CompraRegistro, recebimento };
+    } catch (err) {
+      console.error('❌ [API Error] getCompraDetalhes:', err);
+      return null;
+    }
+  },
+
+  /** Inicia um novo recebimento para uma compra. */
+  async iniciarRecebimento(compraId: string): Promise<{ success: boolean; recebimentoId?: string; error?: string }> {
+    try {
+      const { data, error } = await supabase
+        .from('recebimentos')
+        .insert({ compra_id: compraId, status: 'EM_CONFERENCIA' })
+        .select('id')
+        .single();
+      if (error || !data) throw error ?? new Error('Erro ao criar recebimento');
+      return { success: true, recebimentoId: data.id };
+    } catch (err: any) {
+      console.error('❌ [API Error] iniciarRecebimento:', err);
+      return { success: false, error: err?.message ?? 'Erro ao iniciar recebimento' };
+    }
+  },
+
+  /** Confere um item individual durante o recebimento. */
+  async conferirItemBarcode(payload: {
+    recebimento_id: string;
+    compra_id: string;
+    medicamento_id: string;
+    barcode?: string;
+    lote: string;
+    validade: string;
+    quantidade_recebida: number;
+  }): Promise<{ success: boolean; itemId?: string; error?: string }> {
+    try {
+      const { data, error } = await supabase
+        .from('recebimento_itens')
+        .insert({
+          recebimento_id: payload.recebimento_id,
+          compra_id: payload.compra_id,
+          medicamento_id: payload.medicamento_id,
+          barcode: payload.barcode ?? null,
+          lote: payload.lote,
+          validade: payload.validade,
+          quantidade_recebida: payload.quantidade_recebida,
+          status_item: 'CONFERIDO',
+        })
+        .select('id')
+        .single();
+      if (error || !data) throw error ?? new Error('Erro ao conferir item');
+      return { success: true, itemId: data.id };
+    } catch (err: any) {
+      console.error('❌ [API Error] conferirItemBarcode:', err);
+      return { success: false, error: err?.message ?? 'Erro ao conferir item' };
+    }
+  },
+
+  /** Registra avaria em um item de recebimento. */
+  async registrarAvaria(
+    recebimentoId: string,
+    itemId: string,
+    payload: { quantidade_avaria: number; observacao: string }
+  ): Promise<{ success: boolean; error?: string }> {
+    try {
+      const { error } = await supabase
+        .from('recebimento_itens')
+        .update({ status_item: 'AVARIA', ...payload })
+        .eq('id', itemId)
+        .eq('recebimento_id', recebimentoId);
+      if (error) throw error;
+      return { success: true };
+    } catch (err: any) {
+      console.error('❌ [API Error] registrarAvaria:', err);
+      return { success: false, error: err?.message ?? 'Erro ao registrar avaria' };
+    }
+  },
+
+  /** Finaliza o recebimento, lançando os lotes conferidos no estoque. */
+  async finalizarRecebimento(recebimentoId: string): Promise<{ success: boolean; lotesEntrados?: number; error?: string }> {
+    try {
+      const { data: itens, error: fetchErr } = await supabase
+        .from('recebimento_itens')
+        .select('*')
+        .eq('recebimento_id', recebimentoId)
+        .eq('status_item', 'CONFERIDO');
+      if (fetchErr) throw fetchErr;
+
+      const lotesEntrados = itens?.length ?? 0;
+
+      if (lotesEntrados > 0) {
+        for (const item of itens!) {
+          await supabase.from('lotes').insert({
+            medicamento_id: item.medicamento_id,
+            lote: item.lote,
+            data_validade: item.validade,
+            quantidade_atual: item.quantidade_recebida,
+            barcode: item.barcode,
+          });
+        }
+      }
+
+      await supabase
+        .from('recebimentos')
+        .update({ status: 'FINALIZADO' })
+        .eq('id', recebimentoId);
+
+      return { success: true, lotesEntrados };
+    } catch (err: any) {
+      console.error('❌ [API Error] finalizarRecebimento:', err);
+      return { success: false, error: err?.message ?? 'Erro ao finalizar recebimento' };
+    }
+  },
 }; // fim api
 
 /** Utilitário: distância haversine em km entre dois pontos geográficos */
@@ -2653,4 +2853,5 @@ export const recallAPI = {
       };
     }
   },
+
 };
