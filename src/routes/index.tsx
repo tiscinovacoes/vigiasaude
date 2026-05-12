@@ -56,6 +56,13 @@ export const router = createBrowserRouter([
           return { Component: ConfirmarEntrega };
         },
       },
+      {
+        path: 'comparar-orcamentos/:id',
+        lazy: async () => {
+          const { CompararOrcamentos } = await import('../pages/CompararOrcamentos');
+          return { Component: CompararOrcamentos };
+        },
+      },
     ],
   },
   {
