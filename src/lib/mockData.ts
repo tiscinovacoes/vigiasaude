@@ -1,4 +1,4 @@
-import { Ata, Auditoria, Fornecedor, MedicamentoAta, PedidoCompra } from '../types';
+import type { Ata, Auditoria, Fornecedor, MedicamentoAta, PedidoCompra } from '../types';
 
 export const mockFornecedores: Fornecedor[] = [
   { id: 'f1', nome: 'MedSupply Nacional LTDA', status: 'ATIVO', email: 'contato@medsupply.com.br' },

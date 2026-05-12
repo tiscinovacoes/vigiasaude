@@ -1,5 +1,5 @@
 import { mockPedidosCompra, mockAtas } from '../lib/mockData';
-import { PedidoCompra } from '../types';
+import type { PedidoCompra } from '../types';
 
 export interface PedidoWithAta extends PedidoCompra {
   ataNumero: string;

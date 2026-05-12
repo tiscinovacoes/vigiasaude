@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router';
 import { useAuth } from '../context/AuthContext';
-import { UserRole } from '../types';
+import type { UserRole } from '../types';
 import { Shield, Lock, Mail, Users } from 'lucide-react';
 
 export default function LoginPage() {

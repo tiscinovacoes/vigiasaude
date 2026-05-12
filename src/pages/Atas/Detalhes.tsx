@@ -1,8 +1,10 @@
 import { useEffect, useState } from 'react';
 import { useParams } from 'react-router';
 import { toast } from 'sonner';
-import { getAtaFullDetails, AtaFullDetails } from '../../services/ataService';
-import { DataTable, ColumnDef } from '../../components/ui/DataTable';
+import { getAtaFullDetails } from '../../services/ataService';
+import type { AtaFullDetails } from '../../services/ataService';
+import { DataTable } from '../../components/ui/DataTable';
+import type { ColumnDef } from '../../components/ui/DataTable';
 import { ProgressBar } from '../../components/ui/ProgressBar';
 import { AlertBanner } from '../../components/ui/AlertBanner';
 import { TableSkeleton } from '../../components/ui/TableSkeleton';

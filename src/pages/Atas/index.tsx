@@ -1,8 +1,10 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router';
 import { toast } from 'sonner';
-import { getAtas, AtaWithFornecedor } from '../../services/ataService';
-import { DataTable, ColumnDef } from '../../components/ui/DataTable';
+import { getAtas } from '../../services/ataService';
+import type { AtaWithFornecedor } from '../../services/ataService';
+import { DataTable } from '../../components/ui/DataTable';
+import type { ColumnDef } from '../../components/ui/DataTable';
 import { StatusBadge } from '../../components/ui/StatusBadge';
 import { TableSkeleton } from '../../components/ui/TableSkeleton';
 import { Eye, Clock, AlertCircle } from 'lucide-react';

@@ -1,5 +1,5 @@
 import { mockAtas, mockFornecedores, mockMedicamentosAta, mockPedidosCompra } from '../lib/mockData';
-import { Ata, MedicamentoAta, PedidoCompra } from '../types';
+import type { Ata, MedicamentoAta, PedidoCompra } from '../types';
 
 export interface AtaWithFornecedor extends Ata {
   fornecedorNome: string;

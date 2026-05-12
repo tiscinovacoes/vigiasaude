@@ -1,8 +1,10 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router';
 import { toast } from 'sonner';
-import { getPedidos, PedidoWithAta } from '../../services/pedidoService';
-import { DataTable, ColumnDef } from '../../components/ui/DataTable';
+import { getPedidos } from '../../services/pedidoService';
+import type { PedidoWithAta } from '../../services/pedidoService';
+import { DataTable } from '../../components/ui/DataTable';
+import type { ColumnDef } from '../../components/ui/DataTable';
 import { StatusBadge } from '../../components/ui/StatusBadge';
 import { TableSkeleton } from '../../components/ui/TableSkeleton';
 import { CheckCircle, AlertCircle } from 'lucide-react';

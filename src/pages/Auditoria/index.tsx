@@ -1,6 +1,7 @@
 import { useState, useMemo } from 'react';
 import { mockAuditoria } from '../../lib/mockData';
-import { DataTable, ColumnDef } from '../../components/ui/DataTable';
+import { DataTable } from '../../components/ui/DataTable';
+import type { ColumnDef } from '../../components/ui/DataTable';
 import { StatusBadge } from '../../components/ui/StatusBadge';
 import { Filter, Download, Terminal, Search, User } from 'lucide-react';
 
