@@ -1,28 +1,83 @@
+import { useEffect, useState } from 'react';
 import { useParams } from 'react-router';
-import { mockAtas, mockFornecedores, mockMedicamentosAta, mockPedidosCompra } from '../../lib/mockData';
+import { toast } from 'sonner';
+import { getAtaFullDetails, AtaFullDetails } from '../../services/ataService';
 import { DataTable, ColumnDef } from '../../components/ui/DataTable';
 import { ProgressBar } from '../../components/ui/ProgressBar';
 import { AlertBanner } from '../../components/ui/AlertBanner';
-import { Clock } from 'lucide-react';
+import { TableSkeleton } from '../../components/ui/TableSkeleton';
+import { Clock, AlertCircle, ArrowLeft } from 'lucide-react';
+import { Link } from 'react-router';
 
 export function AtasDetalhes() {
   const { id } = useParams<{ id: string }>();
+  const [data, setData] = useState<AtaFullDetails | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  const ata = mockAtas.find(a => a.id === id);
-  const fornecedor = mockFornecedores.find(f => f.id === ata?.fornecedorId);
-  
-  if (!ata) {
-    return <div className="p-8 text-center text-gray-500">Ata não encontrada.</div>;
+  useEffect(() => {
+    const fetchData = async () => {
+      if (!id) return;
+      try {
+        setIsLoading(true);
+        const result = await getAtaFullDetails(id);
+        if (!result) {
+          setError('Ata não encontrada.');
+          toast.error('Ata não encontrada');
+        } else {
+          setData(result);
+        }
+      } catch (err) {
+        console.error('Erro ao carregar detalhes da ata:', err);
+        setError('Ocorreu um erro ao carregar os detalhes da Ata.');
+        toast.error('Erro ao carregar detalhes');
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetchData();
+  }, [id]);
+
+  if (isLoading) {
+    return (
+      <div className="space-y-6 animate-pulse">
+        <div className="h-8 w-64 bg-gray-200 rounded-md"></div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <div key={i} className="h-24 bg-gray-100 rounded-xl border border-gray-200"></div>
+          ))}
+        </div>
+        <TableSkeleton rows={3} columns={6} />
+      </div>
+    );
   }
 
+  if (error || !data) {
+    return (
+      <div className="rounded-xl border border-red-200 bg-red-50 p-8 text-center">
+        <AlertCircle className="mx-auto h-12 w-12 text-red-400" />
+        <h3 className="mt-2 text-sm font-semibold text-red-900">Erro no carregamento</h3>
+        <p className="mt-1 text-sm text-red-500">{error || 'Ata não encontrada'}</p>
+        <Link 
+          to="/atas"
+          className="mt-4 inline-flex items-center text-sm font-medium text-red-600 hover:text-red-500"
+        >
+          <ArrowLeft className="mr-2 h-4 w-4" />
+          Voltar para listagem
+        </Link>
+      </div>
+    );
+  }
+
+  const { medicamentos, pedidos, ...ata } = data;
+
   // Lógica de consumo
-  const pedidosAta = mockPedidosCompra.filter(p => p.ataId === ata.id);
-  
-  const consumido = pedidosAta
+  const consumido = pedidos
     .filter(p => p.status === 'ENTREGUE')
     .reduce((acc, curr) => acc + curr.valorTotal, 0);
 
-  const comprometido = pedidosAta
+  const comprometido = pedidos
     .filter(p => p.status === 'APROVADO' || p.status === 'EM_TRANSITO')
     .reduce((acc, curr) => acc + curr.valorTotal, 0);
 
@@ -42,9 +97,6 @@ export function AtasDetalhes() {
     return new Date(isoString).toLocaleDateString('pt-BR');
   };
 
-  // Dados da tabela de medicamentos
-  const medicamentos = mockMedicamentosAta.filter(m => m.ataId === ata.id);
-
   const columns: ColumnDef<typeof medicamentos[0]>[] = [
     { header: 'Nome do Medicamento', accessorKey: 'nome', sortable: true },
     { header: 'P. Unitário', cell: (row) => formatCurrency(row.precoUnitario) },
@@ -63,8 +115,7 @@ export function AtasDetalhes() {
 
   // Renderização do detalhe da linha (Pedidos que usaram o medicamento)
   const renderExpandedRow = (medicamento: typeof medicamentos[0]) => {
-    // Acha os pedidos dessa ata que contém esse medicamento
-    const pedidosComItem = pedidosAta.filter(p => p.itens.some(i => i.medicamentoId === medicamento.id));
+    const pedidosComItem = pedidos.filter(p => p.itens.some(i => i.medicamentoId === medicamento.id));
 
     if (pedidosComItem.length === 0) {
       return <p className="text-sm text-gray-500">Nenhum pedido realizado para este item.</p>;
@@ -108,8 +159,13 @@ export function AtasDetalhes() {
     <div className="space-y-6">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div>
+          <div className="flex items-center gap-2 text-sm text-gray-500 mb-2">
+            <Link to="/atas" className="hover:text-blue-600 transition-colors">Atas</Link>
+            <span>/</span>
+            <span className="text-gray-900 font-medium">{ata.numero}</span>
+          </div>
           <h1 className="text-2xl font-bold text-gray-900">Ata {ata.numero}</h1>
-          <p className="mt-1 text-sm text-gray-500">Fornecedor: <span className="font-medium text-gray-900">{fornecedor?.nome}</span></p>
+          <p className="mt-1 text-sm text-gray-500">Fornecedor: <span className="font-medium text-gray-900">{ata.fornecedorNome}</span></p>
         </div>
       </div>
 
