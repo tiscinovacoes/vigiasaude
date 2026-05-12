@@ -77,6 +77,13 @@ export const router = createBrowserRouter([
           return { Component: AprovarReequilibrio };
         },
       },
+      {
+        path: 'auditoria',
+        lazy: async () => {
+          const { AuditoriaLista } = await import('../pages/Auditoria');
+          return { Component: AuditoriaLista };
+        },
+      },
     ],
   },
   {

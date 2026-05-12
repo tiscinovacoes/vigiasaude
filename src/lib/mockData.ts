@@ -92,8 +92,52 @@ export const mockPedidosCompra: PedidoCompra[] = [
 ];
 
 export const mockAuditoria: Auditoria[] = [
-  { id: 'aud1', timestamp: '2025-01-05T08:00:00Z', usuarioId: 'u1', acao: 'CRIACAO', entidadeId: 'f1', detalhes: 'Fornecedor MedSupply cadastrado no sistema.' },
-  { id: 'aud2', timestamp: '2025-01-10T09:30:00Z', usuarioId: 'u2', acao: 'CRIACAO', entidadeId: 'a1', detalhes: 'Ata SRP 045/2025 registrada.' },
-  { id: 'aud3', timestamp: '2026-05-11T16:45:00Z', usuarioId: 'u3', acao: 'APROVACAO', entidadeId: 'pdc4', detalhes: 'Pedido de compra pdc4 aprovado pela diretoria.' },
-  { id: 'aud4', timestamp: '2026-05-05T10:15:00Z', usuarioId: 'u1', acao: 'BLOQUEIO', entidadeId: 'f4', detalhes: 'Fornecedor BioLogistica Sul bloqueado por documentação irregular.' },
+  { 
+    id: 'aud1', 
+    timestamp: '2025-01-05T08:00:00Z', 
+    usuarioId: 'u1', 
+    acao: 'CRIACAO', 
+    entidadeId: 'f1', 
+    detalhes: 'Fornecedor MedSupply cadastrado no sistema.',
+    ip: '192.168.1.45',
+    justificativa: 'Cadastro inicial de fornecedor habilitado em licitação.',
+    estadoAnterior: null,
+    estadoNovo: { id: 'f1', nome: 'MedSupply Nacional LTDA', status: 'ATIVO', email: 'contato@medsupply.com.br' }
+  },
+  { 
+    id: 'aud2', 
+    timestamp: '2025-01-10T09:30:00Z', 
+    usuarioId: 'u2', 
+    acao: 'CRIACAO', 
+    entidadeId: 'a1', 
+    detalhes: 'Ata SRP 045/2025 registrada.',
+    ip: '192.168.1.12',
+    justificativa: 'Assinatura de contrato após homologação.',
+    estadoAnterior: null,
+    estadoNovo: { id: 'a1', numero: 'SRP 045/2025', fornecedorId: 'f1', valorTeto: 2500000.0 }
+  },
+  { 
+    id: 'aud3', 
+    timestamp: '2026-05-11T16:45:00Z', 
+    usuarioId: 'u3', 
+    acao: 'APROVACAO', 
+    entidadeId: 'pdc4', 
+    detalhes: 'Pedido de compra pdc4 aprovado pela diretoria.',
+    ip: '10.0.0.8',
+    justificativa: 'Necessidade urgente de reposição de estoque de Dipirona.',
+    estadoAnterior: { id: 'pdc4', status: 'PENDENTE' },
+    estadoNovo: { id: 'pdc4', status: 'APROVADO' }
+  },
+  { 
+    id: 'aud4', 
+    timestamp: '2026-05-05T10:15:00Z', 
+    usuarioId: 'u1', 
+    acao: 'BLOQUEIO', 
+    entidadeId: 'f4', 
+    detalhes: 'Fornecedor BioLogistica Sul bloqueado por documentação irregular.',
+    ip: '192.168.1.45',
+    justificativa: 'Certidão negativa de débitos vencida e não renovada após prazo legal.',
+    estadoAnterior: { id: 'f4', status: 'ATIVO' },
+    estadoNovo: { id: 'f4', status: 'BLOQUEADO' }
+  },
 ];

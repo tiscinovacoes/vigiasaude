@@ -1,5 +1,5 @@
 import { Link, useLocation } from 'react-router';
-import { LayoutDashboard, ShoppingCart, Truck, Menu, FileText, ClipboardList, Scale, CheckSquare } from 'lucide-react';
+import { LayoutDashboard, ShoppingCart, Truck, Menu, FileText, ClipboardList, Scale, CheckSquare, ShieldCheck } from 'lucide-react';
 
 export default function Sidebar({ isOpen, setIsOpen }: { isOpen: boolean; setIsOpen: (val: boolean) => void }) {
   const location = useLocation();
@@ -11,6 +11,7 @@ export default function Sidebar({ isOpen, setIsOpen }: { isOpen: boolean; setIsO
     { name: 'Pedidos', path: '/pedidos', icon: ClipboardList },
     { name: 'Solicitar Reequilíbrio', path: '/solicitar-reequilibrio', icon: Scale },
     { name: 'Aprovar Reequilíbrio', path: '/aprovar-reequilibrio', icon: CheckSquare },
+    { name: 'Auditoria TCU', path: '/auditoria', icon: ShieldCheck },
   ];
 
   return (
