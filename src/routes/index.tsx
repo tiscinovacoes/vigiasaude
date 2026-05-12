@@ -42,6 +42,20 @@ export const router = createBrowserRouter([
           return { Component: AtasDetalhes };
         },
       },
+      {
+        path: 'pedidos',
+        lazy: async () => {
+          const { PedidosLista } = await import('../pages/Pedidos');
+          return { Component: PedidosLista };
+        },
+      },
+      {
+        path: 'confirmar-entrega/:id',
+        lazy: async () => {
+          const { ConfirmarEntrega } = await import('../pages/Pedidos/ConfirmarEntrega');
+          return { Component: ConfirmarEntrega };
+        },
+      },
     ],
   },
   {
