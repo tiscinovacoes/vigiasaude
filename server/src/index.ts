@@ -3,6 +3,7 @@ import cors from 'cors'
 import dotenv from 'dotenv'
 
 import authRoutes from './routes/authRoutes'
+import apiRoutes from './routes/apiRoutes'
 import { authMiddleware, roleMiddleware } from './middlewares/auth'
 
 dotenv.config()
@@ -15,6 +16,7 @@ app.use(express.json())
 
 // Rotas
 app.use('/auth', authRoutes)
+app.use('/api', apiRoutes)
 
 // Rota de teste pública
 app.get('/health', (req, res) => {
