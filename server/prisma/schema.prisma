@@ -85,6 +85,8 @@ model PedidoCompra {
   criadoEm     DateTime     @default(now())
   atualizadoEm DateTime     @updatedAt
 
+  @@index([ataId])
+  @@index([status])
   @@map("pedidos_compra")
 }
 
@@ -99,5 +101,7 @@ model Auditoria {
   dadosDepois   Json?
   justificativa String?
 
+  @@index([usuarioId])
+  @@index([dataHora])
   @@map("auditorias")
 }
