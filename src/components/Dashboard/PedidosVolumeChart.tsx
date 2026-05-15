@@ -40,7 +40,7 @@ export function PedidosVolumeChart() {
               tickFormatter={(value) => `R$ ${value / 1000}k`}
             />
             <Tooltip 
-              formatter={(value: number) => [formatCurrency(value), 'Volume']}
+              formatter={(value: any) => [formatCurrency(value), 'Volume']}
               contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
             />
             <Bar dataKey="volume" radius={[4, 4, 0, 0]}>

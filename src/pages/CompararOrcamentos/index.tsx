@@ -171,7 +171,7 @@ export function CompararOrcamentos() {
                               {formatCurrency(orcamento.precoUnitario)}
                             </span>
                             {isAcimaCmed && (
-                              <AlertTriangle className="inline-block w-4 h-4 ml-1 text-red-500" title="Acima da CMED" />
+                                <AlertTriangle className="inline-block w-4 h-4 ml-1 text-red-500" />
                             )}
                           </td>
                           <td className="px-4 py-3">{orcamento.prazoEntrega}</td>

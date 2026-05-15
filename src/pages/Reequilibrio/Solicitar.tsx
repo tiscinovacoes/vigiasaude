@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -8,7 +8,7 @@ import { SuccessModal } from '../../components/ui/SuccessModal';
 import { Scale, ArrowRight, TrendingUp } from 'lucide-react';
 import { reequilibrioSchema } from './schema';
 import type { ReequilibrioFormData } from './schema';
-import { ValidatedInput } from '../../components/ui/Form/ValidatedInput';
+// import { ValidatedInput } from '../../components/ui/Form/ValidatedInput';
 import { ValidatedTextarea } from '../../components/ui/Form/ValidatedTextarea';
 import { maskCurrencyBRL, parseCurrencyBRL, formatCurrencyBRL } from '../../lib/utils';
 
@@ -22,7 +22,6 @@ export function SolicitarReequilibrio() {
     handleSubmit,
     watch,
     setValue,
-    resetField,
     formState: { errors, isValid }
   } = useForm<ReequilibrioFormData>({
     resolver: zodResolver(reequilibrioSchema),
@@ -34,8 +33,8 @@ export function SolicitarReequilibrio() {
     }
   });
 
-  const selectedAtaId = useState('')[0]; // Keeping for compatibility with legacy logic if needed, but we'll use watch
-  const watchedAtaId = watch('itemAtaId') ? mockMedicamentosAta.find(m => m.id === watch('itemAtaId'))?.ataId : '';
+  // const selectedAtaId = useState('')[0];
+  // const watchedAtaId = watch('itemAtaId') ? mockMedicamentosAta.find(m => m.id === watch('itemAtaId'))?.ataId : '';
   const [localAtaId, setLocalAtaId] = useState('');
 
   const selectedMedId = watch('itemAtaId');

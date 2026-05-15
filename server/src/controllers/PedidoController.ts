@@ -5,7 +5,7 @@ import { AuthRequest } from '../middlewares/auth';
 export class PedidoController {
   // PATCH /api/pedidos/:id/entrega
   async confirmarEntrega(req: AuthRequest, res: Response) {
-    const { id } = req.params;
+    const id = req.params.id as string;
     const usuarioId = req.user?.id;
 
     if (!usuarioId) {
