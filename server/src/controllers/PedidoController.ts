@@ -3,6 +3,31 @@ import prisma from '../config/prisma';
 import { AuthRequest } from '../middlewares/auth';
 
 export class PedidoController {
+  // GET /api/pedidos
+  async listar(req: AuthRequest, res: Response) {
+    try {
+      const pedidos = await prisma.pedidoCompra.findMany({
+        include: {
+          ata: {
+            select: { numero: true }
+          }
+        },
+        orderBy: { criadoEm: 'desc' }
+      });
+
+      // Formatar para o padrão que o front espera (ataNumero)
+      const result = pedidos.map(p => ({
+        ...p,
+        ataNumero: p.ata.numero
+      }));
+
+      return res.json(result);
+    } catch (err) {
+      console.error('Erro ao listar pedidos:', err);
+      return res.status(500).json({ error: 'Erro interno ao listar pedidos' });
+    }
+  }
+
   // PATCH /api/pedidos/:id/entrega
   async confirmarEntrega(req: AuthRequest, res: Response) {
     const id = req.params.id as string;

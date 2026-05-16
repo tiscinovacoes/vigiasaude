@@ -45,6 +45,36 @@ async function main() {
   })
 
   console.log({ comprador, fornecedor })
+
+  // Criar uma Ata de Exemplo
+  const ataExemplo = await prisma.ata.upsert({
+    where: { numero: '2024/001' },
+    update: {},
+    create: {
+      numero: '2024/001',
+      vigenciaInicio: new Date('2024-01-01'),
+      vigenciaFim: new Date('2025-01-01'),
+      valorTeto: 100000.00,
+      fornecedorId: 'f1',
+      status: 'ATIVA',
+      medicamentos: {
+        create: [
+          {
+            nome: 'Amoxicilina 500mg',
+            precoUnitario: 1.50,
+            qtdeInicial: 10000,
+          },
+          {
+            nome: 'Dipirona 500mg',
+            precoUnitario: 0.50,
+            qtdeInicial: 50000,
+          }
+        ]
+      }
+    }
+  })
+
+  console.log('Ata de exemplo criada:', ataExemplo.numero)
   console.log('Seed finalizado com sucesso!')
 }
 
