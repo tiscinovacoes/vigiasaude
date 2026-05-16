@@ -1,6 +1,13 @@
 import { PrismaClient } from '@prisma/client'
+import { Pool } from 'pg'
+import { PrismaPg } from '@prisma/adapter-pg'
+import * as dotenv from 'dotenv'
 
-const prisma = new PrismaClient()
+dotenv.config()
+
+const pool = new Pool({ connectionString: process.env.DATABASE_URL })
+const adapter = new PrismaPg(pool)
+const prisma = new PrismaClient({ adapter })
 
 async function main() {
   console.log('Iniciando seed...')
@@ -19,7 +26,7 @@ async function main() {
     create: {
       nome: 'João Comprador',
       email: 'comprador@vigiasaude.com.br',
-      senhaHash: '$2b$10$YourHashHere', // Idealmente usar bcrypt para gerar
+      senhaHash: '$2b$10$BOy0TlhfA4uYyvDEN0bCHeK8eRwAjqumO60t72AEyxJ3TGEgR/fgS', // Senha: 123456
       role: 'COMPRADOR',
     },
   })
@@ -31,9 +38,9 @@ async function main() {
     create: {
       nome: 'Maria Fornecedora',
       email: 'fornecedor@medsupply.com.br',
-      senhaHash: '$2b$10$YourHashHere',
+      senhaHash: '$2b$10$BOy0TlhfA4uYyvDEN0bCHeK8eRwAjqumO60t72AEyxJ3TGEgR/fgS', // Senha: 123456
       role: 'FORNECEDOR',
-      fornecedorId: 'f1', // ID fictício para o fornecedor
+      fornecedorId: 'f1',
     },
   })
 
@@ -44,7 +51,8 @@ async function main() {
 main()
   .catch((e) => {
     console.error(e)
-    process.exit(1)
+    //@ts-ignore
+    if (typeof process !== 'undefined') process.exit(1)
   })
   .finally(async () => {
     await prisma.$disconnect()
